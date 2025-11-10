@@ -27,11 +27,11 @@ interface AddPurchaseModalProps {
   onSuccess?: () => void;
 }
 
-export default function AddPurchaseModal({ 
-  open, 
-  onOpenChange, 
+export default function AddPurchaseModal({
+  open,
+  onOpenChange,
   selectedCard,
-  onSuccess 
+  onSuccess
 }: AddPurchaseModalProps) {
   const [form, setForm] = useState<PurchaseForm>({
     descricao: "",
@@ -48,16 +48,16 @@ export default function AddPurchaseModal({
   const { activeCards } = useCreditCards();
   const { subcategoriesForSelect } = useCategories();
   const { createPurchase, posting } = useCreditPurchases();
-  
+
   const handleSuccess = () => {
     toast({
       title: "Compra registrada",
       description: "A compra foi adicionada ao cartão com sucesso.",
     });
-    
+
     // Fechar modal primeiro para evitar re-renders
     onOpenChange(false);
-    
+
     // Aguardar 100ms antes de resetar e disparar refresh
     setTimeout(() => {
       resetForm();
@@ -147,10 +147,10 @@ export default function AddPurchaseModal({
   // Mostra aviso da competência
   const avisoCompetencia = useMemo(() => {
     if (!form.cartao_id) return "";
-    
+
     const competencia = getCompetencia(form.data_compra, form.cartao_id);
     const mesAno = format(new Date(competencia), "MMM/yyyy", { locale: ptBR });
-    
+
     return `Esta compra entrará na fatura de ${mesAno}`;
   }, [form.data_compra, form.cartao_id, activeCards]);
 
@@ -166,7 +166,7 @@ export default function AddPurchaseModal({
     };
 
     const validation = creditPurchaseSchema.safeParse(validationData);
-    
+
     if (!validation.success) {
       const firstError = validation.error.errors[0];
       toast({
@@ -193,7 +193,7 @@ export default function AddPurchaseModal({
     if (form.tipo_compra === "simples") {
       // Compra simples - uma única parcela
       const competencia = getCompetencia(form.data_compra, form.cartao_id);
-      
+
       try {
         await createPurchase({
           cartao_id: form.cartao_id,
@@ -366,8 +366,8 @@ export default function AddPurchaseModal({
           )}
 
           {/* Abas de tipo de compra */}
-          <Tabs 
-            value={form.tipo_compra} 
+          <Tabs
+            value={form.tipo_compra}
             onValueChange={(value) => updateForm("tipo_compra", value as "simples" | "parcelada")}
           >
             <TabsList className="grid w-full grid-cols-2">
@@ -386,8 +386,8 @@ export default function AddPurchaseModal({
             <TabsContent value="parcelada" className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="parcelas">Quantidade de Parcelas *</Label>
-                <Select 
-                  value={form.parcela_total.toString()} 
+                <Select
+                  value={form.parcela_total.toString()}
                   onValueChange={(value) => updateForm("parcela_total", parseInt(value))}
                 >
                   <SelectTrigger>
