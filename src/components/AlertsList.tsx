@@ -121,6 +121,50 @@ export function AlertsList() {
       }
     });
 
+    // 🆕 Check for invoices due soon (next 7 days)
+    invoices
+      .filter(inv => inv.status === 'aberta' || inv.status === 'fechada')
+      .forEach(invoice => {
+        const dueDate = new Date(invoice.data_vencimento);
+        const diffTime = dueDate.getTime() - now.getTime();
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+        
+        const valor = typeof invoice.valor_fechado === 'string' 
+          ? parseFloat(invoice.valor_fechado || '0')
+          : (invoice.valor_fechado || 0);
+        
+        const card = activeCards.find(c => c.id === invoice.cartao_id);
+        const cardName = card?.apelido || 'Cartão';
+        
+        // Fatura vencendo nos próximos 7 dias
+        if (diffDays >= 0 && diffDays <= 7 && valor > 0) {
+          newAlerts.push({
+            id: `invoice-due-${invoice.id}`,
+            type: "bill_due",
+            title: `Fatura ${cardName} vencendo`,
+            description: `Vence em ${diffDays} dia${diffDays !== 1 ? 's' : ''}`,
+            amount: valor,
+            dueDate: invoice.data_vencimento,
+            priority: diffDays <= 2 ? "high" : "medium",
+            actionable: true
+          });
+        }
+        
+        // Fatura vencida
+        if (diffDays < 0 && valor > 0) {
+          const diasAtraso = Math.abs(diffDays);
+          newAlerts.push({
+            id: `invoice-overdue-${invoice.id}`,
+            type: "overdue",
+            title: `Fatura ${cardName} em atraso`,
+            description: `Venceu há ${diasAtraso} dia${diasAtraso !== 1 ? 's' : ''}`,
+            amount: valor,
+            priority: "high",
+            actionable: true
+          });
+        }
+      });
+
     // Check for low balance
     activeAccounts.forEach(account => {
       const balance = typeof account.saldo_inicial === 'string' 

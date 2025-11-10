@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import cookieParser from 'cookie-parser';
+import dotenv from 'dotenv';
 import { pool, query } from './database.js';
 import {
   authenticateToken,
@@ -19,8 +20,10 @@ import {
   AuthRequest
 } from './auth.js';
 
-// NÃO usar dotenv em produção - variáveis vêm do container
-// dotenv.config();
+// Carregar variáveis de ambiente do arquivo .env em desenvolvimento
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config();
+}
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -68,35 +71,35 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     const { email, password } = req.body;
 
     if (!email || !password) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email e senha são obrigatórios' 
+      return res.status(400).json({
+        success: false,
+        error: 'Email e senha são obrigatórios'
       });
     }
 
     // Buscar usuário
     const user = await getUserByEmail(pool, email);
     if (!user) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Credenciais inválidas' 
+      return res.status(401).json({
+        success: false,
+        error: 'Credenciais inválidas'
       });
     }
 
     // Verificar senha
     const isValid = await verifyPassword(password, user.senha_hash);
     if (!isValid) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Credenciais inválidas' 
+      return res.status(401).json({
+        success: false,
+        error: 'Credenciais inválidas'
       });
     }
 
     // Verificar se está ativo
     if (!user.ativo) {
-      return res.status(403).json({ 
-        success: false, 
-        error: 'Usuário desativado' 
+      return res.status(403).json({
+        success: false,
+        error: 'Usuário desativado'
       });
     }
 
@@ -137,9 +140,9 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Erro no login:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao fazer login' 
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao fazer login'
     });
   }
 });
@@ -150,35 +153,35 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     const { email, password, nome } = req.body;
 
     if (!email || !password || !nome) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email, senha e nome são obrigatórios' 
+      return res.status(400).json({
+        success: false,
+        error: 'Email, senha e nome são obrigatórios'
       });
     }
 
     // Validar formato de email
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email)) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email inválido' 
+      return res.status(400).json({
+        success: false,
+        error: 'Email inválido'
       });
     }
 
     // Validar senha (mínimo 8 caracteres)
     if (password.length < 8) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Senha deve ter no mínimo 8 caracteres' 
+      return res.status(400).json({
+        success: false,
+        error: 'Senha deve ter no mínimo 8 caracteres'
       });
     }
 
     // Verificar se email já existe
     const existingUser = await getUserByEmail(pool, email);
     if (existingUser) {
-      return res.status(409).json({ 
-        success: false, 
-        error: 'Email já cadastrado' 
+      return res.status(409).json({
+        success: false,
+        error: 'Email já cadastrado'
       });
     }
 
@@ -198,9 +201,9 @@ app.post('/api/auth/register', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Erro no registro:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao registrar usuário' 
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao registrar usuário'
     });
   }
 });
@@ -223,9 +226,9 @@ app.get('/api/auth/me', authenticateToken(pool), async (req: AuthRequest, res: R
     });
   } catch (error: any) {
     console.error('Erro ao buscar usuário:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao buscar usuário' 
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar usuário'
     });
   }
 });
@@ -238,16 +241,16 @@ app.post('/api/auth/logout', authenticateToken(pool), async (req: AuthRequest, r
 
     // Limpar cookie
     res.clearCookie('token');
-    
+
     res.json({
       success: true,
       message: 'Logout realizado com sucesso'
     });
   } catch (error: any) {
     console.error('Erro no logout:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: 'Erro ao fazer logout' 
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao fazer logout'
     });
   }
 });
@@ -280,18 +283,18 @@ app.post('/api/usuarios', authenticateToken(pool), requirePermission('usuario', 
     const { email, password, nome, roles } = req.body;
 
     if (!email || !password || !nome) {
-      return res.status(400).json({ 
-        success: false, 
-        error: 'Email, senha e nome são obrigatórios' 
+      return res.status(400).json({
+        success: false,
+        error: 'Email, senha e nome são obrigatórios'
       });
     }
 
     // Verificar se email já existe
     const existingUser = await getUserByEmail(pool, email);
     if (existingUser) {
-      return res.status(409).json({ 
-        success: false, 
-        error: 'Email já cadastrado' 
+      return res.status(409).json({
+        success: false,
+        error: 'Email já cadastrado'
       });
     }
 
@@ -467,15 +470,15 @@ app.get('/health', (_req: Request, res: Response) => {
 app.get('/db-test', async (_req: Request, res: Response) => {
   try {
     const result = await query('SELECT NOW() as now, version() as version');
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       data: result.rows[0],
       connection: 'PostgreSQL conectado com sucesso!'
     });
   } catch (error: any) {
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
+    res.status(500).json({
+      success: false,
+      error: error.message
     });
   }
 });
@@ -503,7 +506,7 @@ app.get('/api/contas', async (req: Request, res: Response) => {
 app.post('/api/contas', async (req: Request, res: Response) => {
   try {
     const { id, nome, tipo, saldo_inicial, tenant_id } = req.body;
-    
+
     if (!nome || !tipo) {
       return res.status(400).json({ error: 'Nome e tipo são obrigatórios' });
     }
@@ -540,12 +543,12 @@ app.delete('/api/contas/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const tenant_id = req.query.tenant_id || 'obsidian';
-    
+
     await query(
       `DELETE FROM financeiro.conta WHERE id = $1 AND tenant_id = $2`,
       [id, tenant_id]
     );
-    
+
     res.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao deletar conta:', error);
@@ -559,7 +562,7 @@ app.delete('/api/contas/:id', async (req: Request, res: Response) => {
 app.get('/api/categorias', async (req: Request, res: Response) => {
   try {
     const tenant_id = req.query.tenant_id || 'obsidian';
-    
+
     // Buscar categorias principais
     const categorias = await query(
       `SELECT * FROM financeiro.categoria 
@@ -593,7 +596,7 @@ app.get('/api/categorias', async (req: Request, res: Response) => {
 app.post('/api/categorias', async (req: Request, res: Response) => {
   try {
     const { id, nome, tipo, parent_id, tenant_id } = req.body;
-    
+
     if (!nome) {
       return res.status(400).json({ error: 'Nome é obrigatório' });
     }
@@ -635,7 +638,7 @@ app.delete('/api/categorias/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const tenant_id = req.query.tenant_id || 'obsidian';
-    
+
     // Verificar se tem subcategorias
     const subs = await query(
       `SELECT COUNT(*) as count FROM financeiro.categoria WHERE parent_id = $1`,
@@ -643,8 +646,8 @@ app.delete('/api/categorias/:id', async (req: Request, res: Response) => {
     );
 
     if (parseInt(subs.rows[0].count) > 0) {
-      return res.status(400).json({ 
-        error: 'Não é possível deletar categoria com subcategorias' 
+      return res.status(400).json({
+        error: 'Não é possível deletar categoria com subcategorias'
       });
     }
 
@@ -652,7 +655,7 @@ app.delete('/api/categorias/:id', async (req: Request, res: Response) => {
       `DELETE FROM financeiro.categoria WHERE id = $1 AND tenant_id = $2`,
       [id, tenant_id]
     );
-    
+
     res.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao deletar categoria:', error);
@@ -665,7 +668,7 @@ app.delete('/api/categorias/:id', async (req: Request, res: Response) => {
 // Listar transações com filtros
 app.get('/api/transacoes', async (req: Request, res: Response) => {
   try {
-    const { 
+    const {
       tenant_id = 'obsidian',
       from,
       to,
@@ -691,7 +694,7 @@ app.get('/api/transacoes', async (req: Request, res: Response) => {
       LEFT JOIN categoria parent_cat ON cat.parent_id = parent_cat.id
       WHERE t.tenant_id = $1
     `;
-    
+
     const params: any[] = [tenant_id];
     let paramIndex = 2;
 
@@ -764,22 +767,22 @@ app.post('/api/transacoes', async (req: Request, res: Response) => {
     } = req.body;
 
     if (!tipo || !valor || !descricao || !conta_id) {
-      return res.status(400).json({ 
-        error: 'Tipo, valor, descrição e conta são obrigatórios' 
+      return res.status(400).json({
+        error: 'Tipo, valor, descrição e conta são obrigatórios'
       });
     }
 
     // Validar valor positivo
     if (valor <= 0) {
-      return res.status(400).json({ 
-        error: 'Valor deve ser maior que zero' 
+      return res.status(400).json({
+        error: 'Valor deve ser maior que zero'
       });
     }
 
     // Validar categoria para crédito/débito
     if ((tipo === 'credito' || tipo === 'debito') && !categoria_id) {
-      return res.status(400).json({ 
-        error: 'Categoria é obrigatória para crédito/débito' 
+      return res.status(400).json({
+        error: 'Categoria é obrigatória para crédito/débito'
       });
     }
 
@@ -797,7 +800,7 @@ app.post('/api/transacoes', async (req: Request, res: Response) => {
          WHERE id = $10 AND tenant_id = $11
          RETURNING *`,
         [tipo, valor, descricao, data_transacao, conta_id,
-         categoria_id, status, referencia, mesRef, id, tenant_id]
+          categoria_id, status, referencia, mesRef, id, tenant_id]
       );
     } else {
       // Inserir
@@ -808,7 +811,7 @@ app.post('/api/transacoes', async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [tipo, valor, descricao, data_transacao, conta_id,
-         categoria_id, origem, status, referencia, mesRef, tenant_id]
+          categoria_id, origem, status, referencia, mesRef, tenant_id]
       );
     }
 
@@ -873,25 +876,25 @@ app.delete('/api/transacoes/:id', authenticateToken(pool), requirePermission('tr
   try {
     const { id } = req.params;
     const tenant_id = req.query.tenant_id || 'obsidian';
-    
+
     // Buscar dados anteriores para auditoria
     const oldDataResult = await query(
       `SELECT * FROM financeiro.transacao WHERE id = $1 AND tenant_id = $2`,
       [id, tenant_id]
     );
-    
+
     if (oldDataResult.rows.length === 0) {
       return res.status(404).json({ success: false, error: 'Transação não encontrada' });
     }
-    
+
     await query(
       `DELETE FROM financeiro.transacao WHERE id = $1 AND tenant_id = $2`,
       [id, tenant_id]
     );
-    
+
     // Log de auditoria
     await logAudit(pool, req.user?.id || null, 'delete', 'transacao', id, oldDataResult.rows[0], null, req);
-    
+
     res.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao deletar transação:', error);
@@ -936,8 +939,8 @@ app.post('/api/cartoes', async (req: Request, res: Response) => {
     } = req.body;
 
     if (!apelido || !dia_fechamento || !dia_vencimento) {
-      return res.status(400).json({ 
-        error: 'Apelido, dia de fechamento e vencimento são obrigatórios' 
+      return res.status(400).json({
+        error: 'Apelido, dia de fechamento e vencimento são obrigatórios'
       });
     }
 
@@ -952,7 +955,7 @@ app.post('/api/cartoes', async (req: Request, res: Response) => {
          WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [apelido, bandeira, limite_total, dia_fechamento, dia_vencimento,
-         conta_pagamento_id, ativo, id, tenant_id]
+          conta_pagamento_id, ativo, id, tenant_id]
       );
     } else {
       // Inserir
@@ -963,7 +966,7 @@ app.post('/api/cartoes', async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [apelido, bandeira, limite_total, dia_fechamento, dia_vencimento,
-         conta_pagamento_id, ativo, tenant_id]
+          conta_pagamento_id, ativo, tenant_id]
       );
     }
 
@@ -992,7 +995,7 @@ app.get('/api/faturas', async (req: Request, res: Response) => {
       LEFT JOIN cartao c ON f.cartao_id = c.id
       WHERE f.tenant_id = $1
     `;
-    
+
     const params: any[] = [tenant_id];
     let paramIndex = 2;
 
@@ -1068,14 +1071,14 @@ app.post('/api/recorrencias', async (req: Request, res: Response) => {
     } = req.body;
 
     if (!conta_id || !tipo || !valor || !descricao || !frequencia || !data_inicio) {
-      return res.status(400).json({ 
-        error: 'Conta, tipo, valor, descrição, frequência e data início são obrigatórios' 
+      return res.status(400).json({
+        error: 'Conta, tipo, valor, descrição, frequência e data início são obrigatórios'
       });
     }
 
     if (!categoria_id) {
-      return res.status(400).json({ 
-        error: 'Categoria é obrigatória' 
+      return res.status(400).json({
+        error: 'Categoria é obrigatória'
       });
     }
 
@@ -1091,8 +1094,8 @@ app.post('/api/recorrencias', async (req: Request, res: Response) => {
          WHERE id = $12 AND tenant_id = $13
          RETURNING *`,
         [conta_id, categoria_id, tipo, valor, descricao,
-         frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-         alerta_dias_antes, id, tenant_id]
+          frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
+          alerta_dias_antes, id, tenant_id]
       );
     } else {
       // Inserir
@@ -1104,8 +1107,8 @@ app.post('/api/recorrencias', async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
         [conta_id, categoria_id, tipo, valor, descricao,
-         frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-         alerta_dias_antes, tenant_id, data_inicio]
+          frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
+          alerta_dias_antes, tenant_id, data_inicio]
       );
     }
 
@@ -1121,12 +1124,12 @@ app.delete('/api/recorrencias/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     const tenant_id = req.query.tenant_id || 'obsidian';
-    
+
     await query(
       `DELETE FROM financeiro.recorrencia WHERE id = $1 AND tenant_id = $2`,
       [id, tenant_id]
     );
-    
+
     res.json({ success: true });
   } catch (error: any) {
     console.error('Erro ao deletar recorrência:', error);
@@ -1139,7 +1142,7 @@ app.delete('/api/recorrencias/:id', async (req: Request, res: Response) => {
 // Criar ou atualizar compra no cartão
 app.post('/api/compras', async (req: Request, res: Response) => {
   const client = await pool.connect();
-  
+
   try {
     const {
       id,
@@ -1163,41 +1166,41 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
     if (!cartao_id || !descricao || !valor || !data_compra) {
       console.error('❌ Validacao falhou - campos obrigatorios faltando');
-      return res.status(400).json({ 
-        error: 'cartao_id, descricao, valor e data_compra são obrigatórios' 
+      return res.status(400).json({
+        error: 'cartao_id, descricao, valor e data_compra são obrigatórios'
       });
     }
 
     // Validar valor positivo
     if (valor <= 0) {
       console.error('❌ Validacao falhou - valor <= 0');
-      return res.status(400).json({ 
-        error: 'Valor deve ser maior que zero' 
+      return res.status(400).json({
+        error: 'Valor deve ser maior que zero'
       });
     }
 
     // Validar parcelas
     if (parcela_numero && parcela_numero < 1) {
       console.error('❌ Validacao falhou - parcela_numero < 1');
-      return res.status(400).json({ 
-        error: 'Número da parcela deve ser maior ou igual a 1' 
+      return res.status(400).json({
+        error: 'Número da parcela deve ser maior ou igual a 1'
       });
     }
 
     if (parcela_total && parcela_total < 1) {
       console.error('❌ Validacao falhou - parcela_total < 1');
-      return res.status(400).json({ 
-        error: 'Total de parcelas deve ser maior ou igual a 1' 
+      return res.status(400).json({
+        error: 'Total de parcelas deve ser maior ou igual a 1'
       });
     }
 
     if (parcela_numero && parcela_total && parcela_numero > parcela_total) {
       console.error('❌ Validacao falhou - parcela_numero > parcela_total');
-      return res.status(400).json({ 
-        error: 'Número da parcela não pode ser maior que o total de parcelas' 
+      return res.status(400).json({
+        error: 'Número da parcela não pode ser maior que o total de parcelas'
       });
     }
-    
+
     if (!categoria_id) {
       console.warn('⚠️  categoria_id nao fornecido - item sera criado sem categoria');
     }
@@ -1206,6 +1209,34 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
     let result;
     if (id) {
+      // ✅ VALIDAÇÃO: Não permitir editar compras de faturas pagas
+      const itemExistente = await client.query(
+        `SELECT fi.*, f.status as fatura_status
+         FROM financeiro.fatura_item fi
+         JOIN financeiro.fatura f ON fi.fatura_id = f.id
+         WHERE fi.id = $1 AND fi.tenant_id = $2`,
+        [id, tenant_id]
+      );
+
+      if (itemExistente.rows.length === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Compra não encontrada' });
+      }
+
+      if (itemExistente.rows[0].fatura_status === 'paga') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: 'Não é possível editar compras de faturas já pagas' 
+        });
+      }
+
+      if (itemExistente.rows[0].fatura_status === 'fechada') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ 
+          error: 'Não é possível editar compras de faturas fechadas' 
+        });
+      }
+
       // Atualizar compra existente
       result = await client.query(
         `UPDATE financeiro.fatura_item 
@@ -1215,17 +1246,17 @@ app.post('/api/compras', async (req: Request, res: Response) => {
          WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [categoria_id, descricao, valor, data_compra, parcela_numero, parcela_total,
-         competencia, id, tenant_id]
+          competencia, id, tenant_id]
       );
     } else {
       // Criar nova compra
       // 1. Garantir que a fatura existe
       let faturaIdToUse = fatura_id;
-      
+
       if (!faturaIdToUse) {
         // Buscar ou criar fatura para a competência
         const competenciaToUse = competencia || new Date(data_compra).toISOString().substring(0, 7) + '-01';
-        
+
         const faturaExistente = await client.query(
           `SELECT id, status FROM financeiro.fatura 
            WHERE cartao_id = $1 AND competencia = $2 AND tenant_id = $3`,
@@ -1234,12 +1265,12 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
         if (faturaExistente.rows.length > 0) {
           faturaIdToUse = faturaExistente.rows[0].id;
-          
+
           // ✅ Validar se fatura está aberta
           if (faturaExistente.rows[0].status !== 'aberta') {
             await client.query('ROLLBACK');
-            return res.status(400).json({ 
-              error: `Não é possível adicionar compras em fatura ${faturaExistente.rows[0].status}` 
+            return res.status(400).json({
+              error: `Não é possível adicionar compras em fatura ${faturaExistente.rows[0].status}`
             });
           }
         } else {
@@ -1255,13 +1286,13 @@ app.post('/api/compras', async (req: Request, res: Response) => {
           }
 
           const diaVencimento = cartaoResult.rows[0].dia_vencimento;
-          
+
           // Calcular data de vencimento e fechamento
           const competenciaDate = new Date(competenciaToUse);
           const dataVencimento = new Date(competenciaDate);
           dataVencimento.setMonth(dataVencimento.getMonth() + 1);
           dataVencimento.setDate(diaVencimento);
-          
+
           // Data de fechamento é 1 semana antes do vencimento
           const dataFechamento = new Date(dataVencimento);
           dataFechamento.setDate(dataFechamento.getDate() - 7);
@@ -1278,8 +1309,8 @@ app.post('/api/compras', async (req: Request, res: Response) => {
              (cartao_id, competencia, data_vencimento, data_fechamento, valor_fechado, status, tenant_id)
              VALUES ($1, $2, $3, $4, 0, 'aberta', $5)
              RETURNING id`,
-            [cartao_id, competenciaToUse, dataVencimento.toISOString().split('T')[0], 
-             dataFechamento.toISOString().split('T')[0], tenant_id]
+            [cartao_id, competenciaToUse, dataVencimento.toISOString().split('T')[0],
+              dataFechamento.toISOString().split('T')[0], tenant_id]
           ).catch((err) => {
             // Tratar erro de duplicação (UNIQUE constraint)
             if (err.code === '23505') { // duplicate key
@@ -1302,7 +1333,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
         valor,
         descricao
       });
-      
+
       result = await client.query(
         `INSERT INTO financeiro.fatura_item 
          (fatura_id, categoria_id, descricao, valor, data_compra,
@@ -1310,9 +1341,9 @@ app.post('/api/compras', async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
         [faturaIdToUse, categoria_id, descricao, valor, data_compra,
-         parcela_numero || 1, parcela_total || 1, competencia, cartao_id, tenant_id]
+          parcela_numero || 1, parcela_total || 1, competencia, cartao_id, tenant_id]
       );
-      
+
       console.log(`✅ Fatura_item criado: ID ${result.rows[0].id}, Parcela: ${result.rows[0].parcela_numero}/${result.rows[0].parcela_total}`);
 
       // 3. Atualizar transação "A Pagar" da fatura
@@ -1361,7 +1392,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
       // Buscar conta padrão (conta_id do cartão ou primeira conta disponível)
       let conta_id_transacao = faturaInfo.conta_id; // Se cartão tem conta_id configurada
-      
+
       if (!conta_id_transacao) {
         // Buscar primeira conta disponível do tenant
         const contaResult = await client.query(
@@ -1371,7 +1402,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
            LIMIT 1`,
           [tenant_id]
         );
-        
+
         if (contaResult.rows.length > 0) {
           conta_id_transacao = contaResult.rows[0].id;
         } else {
@@ -1402,7 +1433,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
           const dataVencimentoStr = faturaInfo.data_vencimento instanceof Date
             ? faturaInfo.data_vencimento.toISOString().split('T')[0]
             : String(faturaInfo.data_vencimento).split('T')[0];
-          
+
           const mesReferencia = dataVencimentoStr.substring(0, 7); // YYYY-MM
 
           const novaTransacao = await client.query(
@@ -1474,7 +1505,7 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
       LEFT JOIN financeiro.categoria parent_cat ON cat.parent_id = parent_cat.id
       WHERE fi.tenant_id = $1 AND fi.is_deleted = false
     `;
-    
+
     const params: any[] = [tenant_id];
     let paramIndex = 2;
 
@@ -1501,7 +1532,7 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
     const validFields = ['data_compra', 'valor', 'descricao', 'created_at'];
     const field = validFields.includes(orderField) ? orderField : 'data_compra';
     const direction = orderDir?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
-    
+
     // Ordenar por campo escolhido + parcela_numero como critério de desempate
     queryText += ` ORDER BY fi.${field} ${direction}, fi.parcela_numero ASC`;
     queryText += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
@@ -1520,10 +1551,10 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
 // Evento: Fechar fatura
 app.post('/api/events/fatura.fechar', async (req: Request, res: Response) => {
   const client = await pool.connect();
-  
+
   try {
     const { cartao_id, competencia, tenant_id } = req.body;
-    
+
     if (!cartao_id || !competencia) {
       return res.status(400).json({ error: 'cartao_id e competencia são obrigatórios' });
     }
@@ -1597,13 +1628,13 @@ app.post('/api/events/fatura.fechar', async (req: Request, res: Response) => {
 // Evento: Pagar fatura (cria transação no ledger)
 app.post('/api/events/fatura.pagar', async (req: Request, res: Response) => {
   const client = await pool.connect();
-  
+
   try {
     const { fatura_id, conta_id, valor_pago, data_pagamento, tenant_id } = req.body;
-    
+
     if (!fatura_id || !conta_id || !valor_pago || !data_pagamento) {
-      return res.status(400).json({ 
-        error: 'fatura_id, conta_id, valor_pago e data_pagamento são obrigatórios' 
+      return res.status(400).json({
+        error: 'fatura_id, conta_id, valor_pago e data_pagamento são obrigatórios'
       });
     }
 

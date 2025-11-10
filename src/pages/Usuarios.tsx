@@ -83,7 +83,7 @@ export default function Usuarios() {
   async function loadUsers() {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("$\{API_BASE_URL\}/usuarios", {
+      const response = await fetch(`${API_BASE_URL}/usuarios`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -107,7 +107,7 @@ export default function Usuarios() {
   async function loadRoles() {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("$\{API_BASE_URL\}/roles", {
+      const response = await fetch(`${API_BASE_URL}/roles`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
@@ -125,7 +125,7 @@ export default function Usuarios() {
   async function handleCreateUser() {
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch("$\{API_BASE_URL\}/usuarios", {
+      const response = await fetch(`${API_BASE_URL}/usuarios`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -165,9 +165,9 @@ export default function Usuarios() {
 
     try {
       const token = localStorage.getItem("token");
-      
+
       // Atualizar dados do usuário
-      const updateResponse = await fetch(`$\{API_BASE_URL\}/usuarios/${selectedUser.id}`, {
+      const updateResponse = await fetch(`${API_BASE_URL}/usuarios/${selectedUser.id}`, {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
@@ -183,7 +183,7 @@ export default function Usuarios() {
 
       // Atualizar roles
       if (formData.roles.length > 0) {
-        const rolesResponse = await fetch(`$\{API_BASE_URL\}/usuarios/${selectedUser.id}/roles`, {
+        const rolesResponse = await fetch(`${API_BASE_URL}/usuarios/${selectedUser.id}/roles`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
@@ -219,7 +219,7 @@ export default function Usuarios() {
 
     try {
       const token = localStorage.getItem("token");
-      const response = await fetch(`$\{API_BASE_URL\}/usuarios/${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/usuarios/${userId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${token}`,

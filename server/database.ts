@@ -1,7 +1,10 @@
 import { Pool } from 'pg';
+import dotenv from 'dotenv';
 
-// NÃO usar dotenv.config() - confiar nas env vars do sistema/container
-// dotenv só é necessário em desenvolvimento local
+// Carregar variáveis de ambiente do arquivo .env em desenvolvimento
+if (process.env.NODE_ENV !== 'production') {
+  dotenv.config();
+}
 
 // Configuração da conexão com PostgreSQL
 export const pool = new Pool({

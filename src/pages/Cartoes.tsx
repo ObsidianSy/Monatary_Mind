@@ -5,7 +5,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
-import { Accordion } from "@/components/ui/accordion";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -59,6 +59,7 @@ export default function CartoesPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editMode, setEditMode] = useState(false);
   const [editForm, setEditForm] = useState<Partial<CreditCard>>({});
+  const [extractPeriodFilter, setExtractPeriodFilter] = useState<string>("all"); // all, 3m, 6m, 12m, year
 
   const { activeCards, loading, refresh, updateCard } = useCreditCards();
   const { invoices } = useInvoices(selectedCard?.id);
@@ -66,6 +67,13 @@ export default function CartoesPage() {
   const { categories } = useCategories();
   const { toast } = useToast();
   const { isValuesCensored } = usePrivacy();
+  
+  // 🆕 Hook para buscar TODAS as compras do cartão (extrato completo)
+  const { items: allCardPurchases, loading: loadingAllPurchases } = useInvoiceItems(undefined, {
+    cartao_id: selectedCard?.id,
+    order: "data_compra.desc",
+    limit: 1000
+  });
 
 
   // Itens de fatura do mês atual para TODOS os cartões (para montar o 'Usado' no grid)
@@ -219,8 +227,8 @@ export default function CartoesPage() {
     });
   }, [invoicesByYear]);
 
-  // Faturas dos últimos 12 meses para o histórico (apenas anteriores ao mês atual)
-  // ✅ MELHORADO: Separar histórico (pagas/fechadas) de futuras
+  // Faturas dos últimos 12 meses para o histórico
+  // ✅ MELHORADO: Mostrar todas as faturas que tenham valor + faturas em atraso
   const last12MonthsInvoices = useMemo(() => {
     const now = new Date();
     const currentMonth = format(now, "yyyy-MM");
@@ -231,13 +239,21 @@ export default function CartoesPage() {
       .filter(inv => {
         const invDate = toCompDate(inv.competencia);
         const compStr = format(invDate, "yyyy-MM");
-        // Apenas faturas do passado que foram pagas ou fechadas
-        return invDate >= twelveMonthsAgo && 
-               compStr < currentMonth && 
-               (inv.status === 'paga' || inv.status === 'fechada');
+        
+        // Mostrar qualquer fatura que:
+        // 1. Tenha valor (foi usada)
+        const temValor = inv.valor_fechado && parseFloat(String(inv.valor_fechado)) > 0;
+        // 2. Esteja fechada ou paga
+        const temStatus = inv.status === 'fechada' || inv.status === 'paga';
+        // 3. Esteja aberta mas de meses anteriores (EM ATRASO)
+        const emAtraso = inv.status === 'aberta' && compStr < currentMonth;
+        // 4. Dentro do range de 12 meses
+        const isDentroRange = invDate >= twelveMonthsAgo;
+        
+        return isDentroRange && (temValor || temStatus || emAtraso);
       })
       .sort((a, b) => {
-        return b.competencia.localeCompare(a.competencia); // DESC
+        return b.competencia.localeCompare(a.competencia); // DESC - mais recente primeiro
       });
   }, [invoices]);
 
@@ -430,7 +446,15 @@ export default function CartoesPage() {
           {/* Card 2: Fatura Atual */}
           <Card className="hover:shadow-lg transition-shadow">
             <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Fatura Atual</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm font-medium text-muted-foreground">Fatura Atual</CardTitle>
+                {currentInvoice?.status === "aberta" && (
+                  <Badge variant="destructive" className="text-xs">
+                    <DollarSign className="w-3 h-3 mr-1" />
+                    A Pagar
+                  </Badge>
+                )}
+              </div>
             </CardHeader>
             <CardContent className="space-y-3">
               {currentInvoice ? (
@@ -441,11 +465,15 @@ export default function CartoesPage() {
                       status={
                         currentInvoice.status === "paga" ? "success" : 
                         currentInvoice.status === "fechada" ? "warning" : 
-                        "info"
+                        "error"
                       }
-                      label={currentInvoice.status}
+                      label={
+                        currentInvoice.status === "paga" ? "✓ Paga" :
+                        currentInvoice.status === "fechada" ? "⏸ Fechada" :
+                        "⏳ Aberta"
+                      }
                       size="sm"
-                      className="capitalize"
+                      className="capitalize font-medium"
                     />
                   </div>
                   <Separator />
@@ -531,6 +559,7 @@ export default function CartoesPage() {
           <TabsList>
             <TabsTrigger value="current">Fatura Atual</TabsTrigger>
             <TabsTrigger value="upcoming">Próximas Faturas</TabsTrigger>
+            <TabsTrigger value="extrato">Extrato Completo</TabsTrigger>
             <TabsTrigger value="history">Histórico</TabsTrigger>
             <TabsTrigger value="settings">Configurações</TabsTrigger>
           </TabsList>
@@ -557,22 +586,26 @@ export default function CartoesPage() {
                     {currentInvoice?.status === "aberta" && (
                       <Button 
                         size="sm"
+                        variant="default"
                         onClick={() => setIsInvoiceActionsModalOpen(true)}
+                        className="bg-orange-600 hover:bg-orange-700"
                       >
-                        <Receipt className="w-3 h-3 mr-2" />
+                        <Receipt className="w-4 h-4 mr-2" />
                         Fechar Fatura
                       </Button>
                     )}
                     {currentInvoice?.status === "fechada" && (
                       <Button 
                         size="sm"
+                        variant="default"
                         onClick={() => {
                           setInvoiceToPayId(currentInvoice.id);
                           setIsPayInvoiceModalOpen(true);
                         }}
+                        className="bg-green-600 hover:bg-green-700"
                       >
-                        <DollarSign className="w-3 h-3 mr-2" />
-                        Pagar Fatura
+                        <DollarSign className="w-4 h-4 mr-2" />
+                        Pagar Agora
                       </Button>
                     )}
                   </div>
@@ -692,6 +725,204 @@ export default function CartoesPage() {
                       />
                     ))}
                   </Accordion>
+                )}
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="extrato" className="space-y-4">
+            <Card>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle>Extrato Completo do Cartão</CardTitle>
+                    <CardDescription>
+                      Todas as compras realizadas neste cartão
+                    </CardDescription>
+                  </div>
+                  <Badge variant="outline" className="ml-2">
+                    {allCardPurchases?.length || 0} compras
+                  </Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                {loadingAllPurchases ? (
+                  <div className="text-center py-8 text-muted-foreground">
+                    Carregando extrato...
+                  </div>
+                ) : allCardPurchases && allCardPurchases.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* Busca e Filtros */}
+                    <div className="flex items-center gap-3 flex-wrap">
+                      <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+                        <Search className="w-4 h-4 text-muted-foreground" />
+                        <Input
+                          placeholder="Buscar no extrato..."
+                          value={searchTerm}
+                          onChange={(e) => setSearchTerm(e.target.value)}
+                          className="max-w-sm"
+                        />
+                      </div>
+                      <Select value={extractPeriodFilter} onValueChange={setExtractPeriodFilter}>
+                        <SelectTrigger className="w-[180px]">
+                          <SelectValue placeholder="Período" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">Tudo</SelectItem>
+                          <SelectItem value="3m">Últimos 3 meses</SelectItem>
+                          <SelectItem value="6m">Últimos 6 meses</SelectItem>
+                          <SelectItem value="12m">Últimos 12 meses</SelectItem>
+                          <SelectItem value="year">Este ano</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Agrupar compras parceladas */}
+                    {(() => {
+                      // Aplicar filtro de período
+                      const now = new Date();
+                      let periodFilteredItems = allCardPurchases;
+                      
+                      if (extractPeriodFilter !== "all") {
+                        periodFilteredItems = allCardPurchases.filter(item => {
+                          const itemDate = new Date(item.data_compra);
+                          const diffMonths = (now.getFullYear() - itemDate.getFullYear()) * 12 + 
+                                            (now.getMonth() - itemDate.getMonth());
+                          
+                          switch(extractPeriodFilter) {
+                            case "3m": return diffMonths <= 3;
+                            case "6m": return diffMonths <= 6;
+                            case "12m": return diffMonths <= 12;
+                            case "year": return itemDate.getFullYear() === now.getFullYear();
+                            default: return true;
+                          }
+                        });
+                      }
+                      
+                      // Aplicar filtro de busca
+                      const filteredItems = periodFilteredItems.filter(item => {
+                        if (!searchTerm) return true;
+                        const search = searchTerm.toLowerCase();
+                        return (
+                          item.descricao?.toLowerCase().includes(search) ||
+                          item.categoria_nome?.toLowerCase().includes(search) ||
+                          item.categoria_pai_nome?.toLowerCase().includes(search)
+                        );
+                      });
+
+                      // Agrupar por descrição base (sem " (1/12)")
+                      const grouped = new Map<string, typeof filteredItems>();
+                      
+                      filteredItems.forEach(item => {
+                        // Remover texto de parcela da descrição para agrupar
+                        const baseDesc = item.descricao.replace(/\s*\(\d+\/\d+\)$/, '');
+                        const key = `${baseDesc}_${item.data_compra}_${item.categoria_id}`;
+                        
+                        if (!grouped.has(key)) {
+                          grouped.set(key, []);
+                        }
+                        grouped.get(key)!.push(item);
+                      });
+
+                      // Converter para array e ordenar
+                      const groupedArray = Array.from(grouped.entries()).map(([key, items]) => {
+                        const sorted = items.sort((a, b) => a.parcela_numero - b.parcela_numero);
+                        const isParcelado = items.length > 1 || items[0].parcela_total > 1;
+                        const valorTotal = items.reduce((sum, i) => 
+                          sum + (typeof i.valor === 'string' ? parseFloat(i.valor) : i.valor || 0), 0
+                        );
+                        
+                        return {
+                          key,
+                          items: sorted,
+                          firstItem: sorted[0],
+                          isParcelado,
+                          valorTotal
+                        };
+                      }).sort((a, b) => 
+                        new Date(b.firstItem.data_compra).getTime() - new Date(a.firstItem.data_compra).getTime()
+                      );
+
+                      return (
+                        <Accordion type="single" collapsible className="w-full space-y-2">
+                          {groupedArray.map(({ key, items, firstItem, isParcelado, valorTotal }) => (
+                            <AccordionItem key={key} value={key} className="border rounded-lg">
+                              <AccordionTrigger className="hover:no-underline px-4 py-3">
+                                <div className="flex items-center justify-between w-full pr-3">
+                                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    <div className="text-sm text-muted-foreground whitespace-nowrap">
+                                      {format(new Date(firstItem.data_compra), "dd/MM/yyyy")}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-medium text-left truncate">
+                                        {firstItem.descricao.replace(/\s*\(\d+\/\d+\)$/, '')}
+                                      </p>
+                                      <p className="text-xs text-muted-foreground text-left">
+                                        {firstItem.categoria_pai_nome || firstItem.categoria_nome || "—"}
+                                      </p>
+                                    </div>
+                                    {isParcelado && (
+                                      <Badge className="bg-blue-500 text-xs">
+                                        {items.length}x de <ValueDisplay value={items[0].valor} size="sm" className="inline" />
+                                      </Badge>
+                                    )}
+                                  </div>
+                                  <ValueDisplay value={valorTotal} size="sm" className="ml-3" />
+                                </div>
+                              </AccordionTrigger>
+                              {isParcelado && (
+                                <AccordionContent className="px-4 pb-3">
+                                  <div className="space-y-1.5 pt-2">
+                                    {items.map((item, idx) => (
+                                      <div 
+                                        key={item.id}
+                                        className="flex items-center justify-between text-sm py-2 px-3 bg-muted/30 rounded border border-border/30"
+                                      >
+                                        <div className="flex items-center gap-3">
+                                          <Badge variant="outline" className="text-xs">
+                                            {item.parcela_numero}/{item.parcela_total}
+                                          </Badge>
+                                          <span className="text-xs text-muted-foreground">
+                                            {format(new Date(item.competencia), "MMM/yyyy", { locale: ptBR })}
+                                          </span>
+                                        </div>
+                                        <ValueDisplay 
+                                          value={typeof item.valor === 'string' ? parseFloat(item.valor) : item.valor} 
+                                          size="sm" 
+                                        />
+                                      </div>
+                                    ))}
+                                  </div>
+                                </AccordionContent>
+                              )}
+                            </AccordionItem>
+                          ))}
+                        </Accordion>
+                      );
+                    })()}
+
+                    {/* Totalizador */}
+                    <div className="flex justify-between items-center pt-4 border-t">
+                      <span className="text-sm text-muted-foreground">
+                        Total de {allCardPurchases.length} parcelas
+                      </span>
+                      <div className="text-right">
+                        <span className="text-sm text-muted-foreground mr-2">Total:</span>
+                        <ValueDisplay 
+                          value={allCardPurchases.reduce((sum, item) => 
+                            sum + (typeof item.valor === 'string' ? parseFloat(item.valor) : item.valor || 0), 0
+                          )} 
+                          size="lg" 
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-center py-12 text-muted-foreground">
+                    <ShoppingBag className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                    <p className="font-medium">Nenhuma compra encontrada</p>
+                    <p className="text-sm mt-1">As compras realizadas aparecerão aqui</p>
+                  </div>
                 )}
               </CardContent>
             </Card>
