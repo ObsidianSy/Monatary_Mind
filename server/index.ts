@@ -1225,15 +1225,15 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
       if (itemExistente.rows[0].fatura_status === 'paga') {
         await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          error: 'Não é possível editar compras de faturas já pagas' 
+        return res.status(400).json({
+          error: 'Não é possível editar compras de faturas já pagas'
         });
       }
 
       if (itemExistente.rows[0].fatura_status === 'fechada') {
         await client.query('ROLLBACK');
-        return res.status(400).json({ 
-          error: 'Não é possível editar compras de faturas fechadas' 
+        return res.status(400).json({
+          error: 'Não é possível editar compras de faturas fechadas'
         });
       }
 

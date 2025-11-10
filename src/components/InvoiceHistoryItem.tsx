@@ -35,7 +35,7 @@ export function InvoiceHistoryItem({ invoice, categories, formatCurrency }: Invo
   // Contar quantas compras tem parcelas
   const comprasParceladas = items?.filter(item => item.parcela_total && item.parcela_total > 1).length || 0;
   const totalCompras = items?.length || 0;
-  
+
   // Verificar se está em atraso
   const now = new Date();
   const vencimento = new Date(invoice.data_vencimento);
@@ -80,11 +80,11 @@ export function InvoiceHistoryItem({ invoice, categories, formatCurrency }: Invo
                 ⚠️ Em Atraso
               </Badge>
             ) : (
-              <Badge 
+              <Badge
                 variant={
-                  invoice.status === "paga" ? "default" : 
-                  invoice.status === "fechada" ? "secondary" : 
-                  "outline"
+                  invoice.status === "paga" ? "default" :
+                    invoice.status === "fechada" ? "secondary" :
+                      "outline"
                 }
                 className="capitalize text-xs"
               >

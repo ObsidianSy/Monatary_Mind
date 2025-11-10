@@ -56,7 +56,7 @@ export function AlertsList() {
         const dueDate = new Date(transaction.data_transacao);
         const diffTime = dueDate.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays >= 0 && diffDays <= 7) {
           const valor = typeof transaction.valor === 'string' ? parseFloat(transaction.valor) : transaction.valor;
           newAlerts.push({
@@ -79,7 +79,7 @@ export function AlertsList() {
         const dueDate = new Date(transaction.data_transacao);
         const diffTime = now.getTime() - dueDate.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
+
         if (diffDays > 0) {
           const valor = typeof transaction.valor === 'string' ? parseFloat(transaction.valor) : transaction.valor;
           newAlerts.push({
@@ -97,17 +97,17 @@ export function AlertsList() {
     // Check for high card usage
     activeCards.forEach(card => {
       const currentMonth = new Date().toISOString().slice(0, 7);
-      const currentInvoice = invoices.find(inv => 
+      const currentInvoice = invoices.find(inv =>
         inv.cartao_id === card.id && inv.competencia.startsWith(currentMonth)
       );
-      
+
       if (currentInvoice) {
         const limite = typeof card.limite_total === 'string' ? parseFloat(card.limite_total) : card.limite_total;
-        const used = typeof currentInvoice.valor_total === 'string' 
+        const used = typeof currentInvoice.valor_total === 'string'
           ? parseFloat(currentInvoice.valor_total || '0')
           : (currentInvoice.valor_total || 0);
         const usagePercentage = limite > 0 ? (used / limite) * 100 : 0;
-        
+
         if (usagePercentage >= 80) {
           newAlerts.push({
             id: `high-usage-${card.id}`,
@@ -128,14 +128,14 @@ export function AlertsList() {
         const dueDate = new Date(invoice.data_vencimento);
         const diffTime = dueDate.getTime() - now.getTime();
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-        
-        const valor = typeof invoice.valor_fechado === 'string' 
+
+        const valor = typeof invoice.valor_fechado === 'string'
           ? parseFloat(invoice.valor_fechado || '0')
           : (invoice.valor_fechado || 0);
-        
+
         const card = activeCards.find(c => c.id === invoice.cartao_id);
         const cardName = card?.apelido || 'Cartão';
-        
+
         // Fatura vencendo nos próximos 7 dias
         if (diffDays >= 0 && diffDays <= 7 && valor > 0) {
           newAlerts.push({
@@ -149,7 +149,7 @@ export function AlertsList() {
             actionable: true
           });
         }
-        
+
         // Fatura vencida
         if (diffDays < 0 && valor > 0) {
           const diasAtraso = Math.abs(diffDays);
@@ -167,10 +167,10 @@ export function AlertsList() {
 
     // Check for low balance
     activeAccounts.forEach(account => {
-      const balance = typeof account.saldo_inicial === 'string' 
-        ? parseFloat(account.saldo_inicial) 
+      const balance = typeof account.saldo_inicial === 'string'
+        ? parseFloat(account.saldo_inicial)
         : account.saldo_inicial;
-      
+
       if (balance < 100 && balance >= 0) {
         newAlerts.push({
           id: `low-balance-${account.id}`,
@@ -266,9 +266,9 @@ export function AlertsList() {
       <CardContent className="space-y-3">
         {alerts.map((alert) => {
           const IconComponent = alertIcons[alert.type];
-          
+
           return (
-            <div 
+            <div
               key={alert.id}
               className={`p-4 rounded-lg border ${alertColors[alert.priority]} hover:shadow-md transition-all`}
             >
@@ -279,8 +279,8 @@ export function AlertsList() {
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-semibold">{alert.title}</span>
                       <Badge variant="outline" className={priorityColors[alert.priority]}>
-                        {alert.priority === "high" ? "Urgente" : 
-                         alert.priority === "medium" ? "Médio" : "Baixo"}
+                        {alert.priority === "high" ? "Urgente" :
+                          alert.priority === "medium" ? "Médio" : "Baixo"}
                       </Badge>
                     </div>
                     <p className="text-sm text-muted-foreground mb-2">
@@ -291,8 +291,8 @@ export function AlertsList() {
                     )}
                   </div>
                 </div>
-                <Button 
-                  variant="ghost" 
+                <Button
+                  variant="ghost"
                   size="sm"
                   onClick={() => dismissAlert(alert.id)}
                   className="text-muted-foreground hover:text-foreground"
@@ -300,14 +300,14 @@ export function AlertsList() {
                   <X className="w-4 h-4" />
                 </Button>
               </div>
-              
+
               {alert.actionable && (
                 <div className="flex gap-2 mt-3 pt-3 border-t border-border/50">
                   <Button size="sm" className="bg-gradient-primary">
                     {getAlertAction(alert)}
                   </Button>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     size="sm"
                     onClick={() => dismissAlert(alert.id)}
                   >

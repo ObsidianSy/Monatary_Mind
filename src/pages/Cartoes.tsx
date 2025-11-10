@@ -9,12 +9,12 @@ import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { 
-  Plus, 
-  CreditCard as CreditCardIcon, 
-  Calendar, 
-  DollarSign, 
-  Eye, 
+import {
+  Plus,
+  CreditCard as CreditCardIcon,
+  Calendar,
+  DollarSign,
+  Eye,
   EyeOff,
   Receipt,
   Settings,
@@ -67,7 +67,7 @@ export default function CartoesPage() {
   const { categories } = useCategories();
   const { toast } = useToast();
   const { isValuesCensored } = usePrivacy();
-  
+
   // 🆕 Hook para buscar TODAS as compras do cartão (extrato completo)
   const { items: allCardPurchases, loading: loadingAllPurchases } = useInvoiceItems(undefined, {
     cartao_id: selectedCard?.id,
@@ -79,7 +79,7 @@ export default function CartoesPage() {
   // Itens de fatura do mês atual para TODOS os cartões (para montar o 'Usado' no grid)
   // ✅ CORRIGIDO: Backend espera competencia no formato YYYY-MM-DD completo
   const monthCompetenciaAll = format(new Date(), 'yyyy-MM-01');
-  
+
   const { items: allItemsThisMonth } = useInvoiceItems(undefined, {
     competencia: monthCompetenciaAll, // Já está no formato correto YYYY-MM-DD
     order: "data_compra.desc",
@@ -88,20 +88,20 @@ export default function CartoesPage() {
 
   const usageByCard = useMemo(() => {
     const map: Record<string, number> = {};
-    
+
     (allItemsThisMonth || []).forEach((i) => {
       // Validar que a competência do item corresponde ao mês atual
-      const itemCompetencia = typeof i.competencia === 'string' 
-        ? i.competencia.substring(0, 7) 
+      const itemCompetencia = typeof i.competencia === 'string'
+        ? i.competencia.substring(0, 7)
         : format(new Date(i.competencia), 'yyyy-MM-01');
-      
+
       if (itemCompetencia === monthCompetenciaAll.substring(0, 7)) {
         const v = typeof i.valor === 'string' ? parseFloat(i.valor) : (i.valor || 0);
         if (!i.cartao_id) return;
         map[i.cartao_id] = (map[i.cartao_id] || 0) + v;
       }
     });
-    
+
     return map;
   }, [allItemsThisMonth, monthCompetenciaAll]);
 
@@ -122,8 +122,8 @@ export default function CartoesPage() {
 
   const getCurrentInvoice = (card: CreditCard) => {
     const currentMonth = formatCompetencia(new Date());
-    return invoices.find(inv => 
-      inv.cartao_id === card.id && 
+    return invoices.find(inv =>
+      inv.cartao_id === card.id &&
       formatCompetencia(inv.competencia) === currentMonth
     );
   };
@@ -140,18 +140,18 @@ export default function CartoesPage() {
   // Hooks derived from current invoice must be declared before any early return
   const currentInvoice = selectedCard ? getCurrentInvoice(selectedCard) : null;
   const currentCompetencia = selectedCard ? formatCompetencia(new Date()) : null;
-  
+
   // Priorizar busca por fatura_id se existir, senão usar cartao_id + competencia
   const { items: invoiceItems, loading: loadingItems } = useInvoiceItems(
     currentInvoice?.id,
-    selectedCard && !currentInvoice ? { 
-      cartao_id: selectedCard.id, 
+    selectedCard && !currentInvoice ? {
+      cartao_id: selectedCard.id,
       competencia: `${currentCompetencia}-01` // ✅ CORRIGIDO: Backend espera formato YYYY-MM-DD
     } : undefined
   );
 
   // Buscar TODOS os itens do cartão (sem limitar por competência)
-  const allCardFilters = useMemo(() => 
+  const allCardFilters = useMemo(() =>
     selectedCard ? {
       cartao_id: selectedCard.id,
       order: "data_compra.desc",
@@ -161,7 +161,7 @@ export default function CartoesPage() {
   );
 
   const { items: allCardItems, loading: loadingAllItems } = useInvoiceItems(
-    undefined, 
+    undefined,
     allCardFilters
   );
 
@@ -207,7 +207,7 @@ export default function CartoesPage() {
       if (!grouped[year]) grouped[year] = [];
       grouped[year].push(inv);
     });
-    
+
     // Ordenar faturas dentro de cada ano por competência DESC (mais recente primeiro)
     Object.keys(grouped).forEach(year => {
       grouped[year].sort((a, b) => {
@@ -216,7 +216,7 @@ export default function CartoesPage() {
         return compB.localeCompare(compA); // DESC: mais recente primeiro
       });
     });
-    
+
     return grouped;
   }, [invoices]);
 
@@ -234,12 +234,12 @@ export default function CartoesPage() {
     const currentMonth = format(now, "yyyy-MM");
     const twelveMonthsAgo = new Date();
     twelveMonthsAgo.setMonth(now.getMonth() - 12);
-    
+
     return invoices
       .filter(inv => {
         const invDate = toCompDate(inv.competencia);
         const compStr = format(invDate, "yyyy-MM");
-        
+
         // Mostrar qualquer fatura que:
         // 1. Tenha valor (foi usada)
         const temValor = inv.valor_fechado && parseFloat(String(inv.valor_fechado)) > 0;
@@ -249,7 +249,7 @@ export default function CartoesPage() {
         const emAtraso = inv.status === 'aberta' && compStr < currentMonth;
         // 4. Dentro do range de 12 meses
         const isDentroRange = invDate >= twelveMonthsAgo;
-        
+
         return isDentroRange && (temValor || temStatus || emAtraso);
       })
       .sort((a, b) => {
@@ -261,7 +261,7 @@ export default function CartoesPage() {
   const upcomingInvoices = useMemo(() => {
     const now = new Date();
     const currentMonth = format(now, "yyyy-MM");
-    
+
     return invoices
       .filter(inv => {
         const invDate = toCompDate(inv.competencia);
@@ -314,8 +314,8 @@ export default function CartoesPage() {
         <p className="text-muted-foreground text-center max-w-md">
           Você ainda não possui cartões de crédito cadastrados. Adicione seu primeiro cartão para começar a gerenciar suas faturas.
         </p>
-        <Button 
-          className="bg-gradient-primary mt-4" 
+        <Button
+          className="bg-gradient-primary mt-4"
           onClick={() => setIsNewCardModalOpen(true)}
           disabled={activeAccounts.length === 0}
         >
@@ -338,7 +338,7 @@ export default function CartoesPage() {
   }
 
   // Mover todos os cálculos e useMemos para ANTES de qualquer render condicional
-  const limite = selectedCard && typeof selectedCard.limite_total === 'string' ? 
+  const limite = selectedCard && typeof selectedCard.limite_total === 'string' ?
     parseFloat(selectedCard.limite_total) : (typeof selectedCard?.limite_total === 'number' ? selectedCard.limite_total : 0);
   const usage = usedPending;
   const usagePercentage = selectedCard ? getUsagePercentage(usage, limite) : 0;
@@ -350,14 +350,14 @@ export default function CartoesPage() {
   nextMonth.setMonth(nextMonth.getMonth() + 1);
   const nextCompetencia = formatCompetencia(nextMonth);
   const nextInvoice = invoices.find(inv => formatCompetencia(inv.competencia) === nextCompetencia);
-  const nextInvoiceValue = nextInvoice?.valor_total 
+  const nextInvoiceValue = nextInvoice?.valor_total
     ? (typeof nextInvoice.valor_total === 'string' ? parseFloat(nextInvoice.valor_total) : nextInvoice.valor_total)
     : 0;
 
   // Hooks moved above early returns: filteredItems, last12MonthsInvoices
 
   // Calcular dias até vencimento
-  const daysUntilDue = currentInvoice 
+  const daysUntilDue = currentInvoice
     ? differenceInDays(new Date(currentInvoice.data_vencimento), new Date())
     : null;
 
@@ -373,10 +373,10 @@ export default function CartoesPage() {
         dia_vencimento: editForm.dia_vencimento ?? selectedCard.dia_vencimento,
         conta_pagamento_id: editForm.conta_pagamento_id ?? selectedCard.conta_pagamento_id,
       };
-      
+
       console.log('💾 Salvando cartão:', { id: selectedCard.id, ...updateData });
       await updateCard(selectedCard.id, updateData);
-      
+
       toast({
         title: "Cartão atualizado",
         description: "As alterações foram salvas com sucesso.",
@@ -393,13 +393,13 @@ export default function CartoesPage() {
     }
   };
 
-  
+
   if (selectedCard) {
     return (
       <div className="space-y-6 p-6">
         <div className="flex items-center gap-4">
-          <Button 
-            variant="ghost" 
+          <Button
+            variant="ghost"
             size="sm"
             onClick={() => {
               setSelectedCard(null);
@@ -422,7 +422,7 @@ export default function CartoesPage() {
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center justify-center">
-                <CircularProgress 
+                <CircularProgress
                   value={usage}
                   max={Number(limite)}
                   size={120}
@@ -434,7 +434,7 @@ export default function CartoesPage() {
                 <p className="text-sm text-muted-foreground">
                   de <ValueDisplay value={Number(limite)} size="sm" className="text-muted-foreground" />
                 </p>
-                <StatusBadge 
+                <StatusBadge
                   status={usagePercentage >= 90 ? "error" : usagePercentage >= 70 ? "warning" : "success"}
                   label={`${disponivel.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })} disponível`}
                   size="sm"
@@ -461,16 +461,16 @@ export default function CartoesPage() {
                 <>
                   <div className="text-center space-y-2">
                     <ValueDisplay value={usage} size="xl" />
-                    <StatusBadge 
+                    <StatusBadge
                       status={
-                        currentInvoice.status === "paga" ? "success" : 
-                        currentInvoice.status === "fechada" ? "warning" : 
-                        "error"
+                        currentInvoice.status === "paga" ? "success" :
+                          currentInvoice.status === "fechada" ? "warning" :
+                            "error"
                       }
                       label={
                         currentInvoice.status === "paga" ? "✓ Paga" :
-                        currentInvoice.status === "fechada" ? "⏸ Fechada" :
-                        "⏳ Aberta"
+                          currentInvoice.status === "fechada" ? "⏸ Fechada" :
+                            "⏳ Aberta"
                       }
                       size="sm"
                       className="capitalize font-medium"
@@ -485,7 +485,7 @@ export default function CartoesPage() {
                     {daysUntilDue !== null && daysUntilDue >= 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Faltam:</span>
-                        <StatusBadge 
+                        <StatusBadge
                           status={daysUntilDue <= 3 ? "error" : "info"}
                           label={`${daysUntilDue} dias`}
                           size="xs"
@@ -575,7 +575,7 @@ export default function CartoesPage() {
                     </CardDescription>
                   </div>
                   <div className="flex gap-2">
-                    <Button 
+                    <Button
                       onClick={() => setIsAddPurchaseModalOpen(true)}
                       size="sm"
                       variant="outline"
@@ -584,7 +584,7 @@ export default function CartoesPage() {
                       Nova Compra
                     </Button>
                     {currentInvoice?.status === "aberta" && (
-                      <Button 
+                      <Button
                         size="sm"
                         variant="default"
                         onClick={() => setIsInvoiceActionsModalOpen(true)}
@@ -595,7 +595,7 @@ export default function CartoesPage() {
                       </Button>
                     )}
                     {currentInvoice?.status === "fechada" && (
-                      <Button 
+                      <Button
                         size="sm"
                         variant="default"
                         onClick={() => {
@@ -623,7 +623,7 @@ export default function CartoesPage() {
                     <p className="text-sm mt-1">
                       Adicione sua primeira compra para começar
                     </p>
-                    <Button 
+                    <Button
                       onClick={() => setIsAddPurchaseModalOpen(true)}
                       variant="outline"
                       className="mt-4"
@@ -782,14 +782,14 @@ export default function CartoesPage() {
                       // Aplicar filtro de período
                       const now = new Date();
                       let periodFilteredItems = allCardPurchases;
-                      
+
                       if (extractPeriodFilter !== "all") {
                         periodFilteredItems = allCardPurchases.filter(item => {
                           const itemDate = new Date(item.data_compra);
-                          const diffMonths = (now.getFullYear() - itemDate.getFullYear()) * 12 + 
-                                            (now.getMonth() - itemDate.getMonth());
-                          
-                          switch(extractPeriodFilter) {
+                          const diffMonths = (now.getFullYear() - itemDate.getFullYear()) * 12 +
+                            (now.getMonth() - itemDate.getMonth());
+
+                          switch (extractPeriodFilter) {
                             case "3m": return diffMonths <= 3;
                             case "6m": return diffMonths <= 6;
                             case "12m": return diffMonths <= 12;
@@ -798,7 +798,7 @@ export default function CartoesPage() {
                           }
                         });
                       }
-                      
+
                       // Aplicar filtro de busca
                       const filteredItems = periodFilteredItems.filter(item => {
                         if (!searchTerm) return true;
@@ -812,12 +812,12 @@ export default function CartoesPage() {
 
                       // Agrupar por descrição base (sem " (1/12)")
                       const grouped = new Map<string, typeof filteredItems>();
-                      
+
                       filteredItems.forEach(item => {
                         // Remover texto de parcela da descrição para agrupar
                         const baseDesc = item.descricao.replace(/\s*\(\d+\/\d+\)$/, '');
                         const key = `${baseDesc}_${item.data_compra}_${item.categoria_id}`;
-                        
+
                         if (!grouped.has(key)) {
                           grouped.set(key, []);
                         }
@@ -828,10 +828,10 @@ export default function CartoesPage() {
                       const groupedArray = Array.from(grouped.entries()).map(([key, items]) => {
                         const sorted = items.sort((a, b) => a.parcela_numero - b.parcela_numero);
                         const isParcelado = items.length > 1 || items[0].parcela_total > 1;
-                        const valorTotal = items.reduce((sum, i) => 
+                        const valorTotal = items.reduce((sum, i) =>
                           sum + (typeof i.valor === 'string' ? parseFloat(i.valor) : i.valor || 0), 0
                         );
-                        
+
                         return {
                           key,
                           items: sorted,
@@ -839,7 +839,7 @@ export default function CartoesPage() {
                           isParcelado,
                           valorTotal
                         };
-                      }).sort((a, b) => 
+                      }).sort((a, b) =>
                         new Date(b.firstItem.data_compra).getTime() - new Date(a.firstItem.data_compra).getTime()
                       );
 
@@ -874,7 +874,7 @@ export default function CartoesPage() {
                                 <AccordionContent className="px-4 pb-3">
                                   <div className="space-y-1.5 pt-2">
                                     {items.map((item, idx) => (
-                                      <div 
+                                      <div
                                         key={item.id}
                                         className="flex items-center justify-between text-sm py-2 px-3 bg-muted/30 rounded border border-border/30"
                                       >
@@ -886,9 +886,9 @@ export default function CartoesPage() {
                                             {format(new Date(item.competencia), "MMM/yyyy", { locale: ptBR })}
                                           </span>
                                         </div>
-                                        <ValueDisplay 
-                                          value={typeof item.valor === 'string' ? parseFloat(item.valor) : item.valor} 
-                                          size="sm" 
+                                        <ValueDisplay
+                                          value={typeof item.valor === 'string' ? parseFloat(item.valor) : item.valor}
+                                          size="sm"
                                         />
                                       </div>
                                     ))}
@@ -908,11 +908,11 @@ export default function CartoesPage() {
                       </span>
                       <div className="text-right">
                         <span className="text-sm text-muted-foreground mr-2">Total:</span>
-                        <ValueDisplay 
-                          value={allCardPurchases.reduce((sum, item) => 
+                        <ValueDisplay
+                          value={allCardPurchases.reduce((sum, item) =>
                             sum + (typeof item.valor === 'string' ? parseFloat(item.valor) : item.valor || 0), 0
-                          )} 
-                          size="lg" 
+                          )}
+                          size="lg"
                         />
                       </div>
                     </div>
@@ -970,8 +970,8 @@ export default function CartoesPage() {
                     </CardDescription>
                   </div>
                   {!editMode && (
-                    <Button 
-                      variant="outline" 
+                    <Button
+                      variant="outline"
                       size="sm"
                       onClick={() => {
                         setEditMode(true);
@@ -1007,7 +1007,7 @@ export default function CartoesPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="bandeira">Bandeira</Label>
-                          <Select 
+                          <Select
                             value={editForm.bandeira || selectedCard.bandeira}
                             onValueChange={(value) => setEditForm({ ...editForm, bandeira: value as any })}
                           >
@@ -1039,7 +1039,7 @@ export default function CartoesPage() {
                       <div className="grid grid-cols-2 gap-4">
                         <div className="space-y-2">
                           <Label htmlFor="fechamento">Dia de Fechamento</Label>
-                          <Select 
+                          <Select
                             value={editForm.dia_fechamento?.toString() || selectedCard.dia_fechamento.toString()}
                             onValueChange={(value) => setEditForm({ ...editForm, dia_fechamento: parseInt(value) })}
                           >
@@ -1058,7 +1058,7 @@ export default function CartoesPage() {
 
                         <div className="space-y-2">
                           <Label htmlFor="vencimento">Dia de Vencimento</Label>
-                          <Select 
+                          <Select
                             value={editForm.dia_vencimento?.toString() || selectedCard.dia_vencimento.toString()}
                             onValueChange={(value) => setEditForm({ ...editForm, dia_vencimento: parseInt(value) })}
                           >
@@ -1078,7 +1078,7 @@ export default function CartoesPage() {
 
                       <div className="space-y-2">
                         <Label htmlFor="conta_pagamento">Conta de Pagamento</Label>
-                        <Select 
+                        <Select
                           value={editForm.conta_pagamento_id || selectedCard.conta_pagamento_id}
                           onValueChange={(value) => setEditForm({ ...editForm, conta_pagamento_id: value })}
                         >
@@ -1101,8 +1101,8 @@ export default function CartoesPage() {
                         <Save className="w-4 h-4 mr-2" />
                         Salvar Alterações
                       </Button>
-                      <Button 
-                        variant="outline" 
+                      <Button
+                        variant="outline"
                         onClick={() => {
                           setEditMode(false);
                           setEditForm({});
@@ -1155,7 +1155,7 @@ export default function CartoesPage() {
             if (!inv) return undefined;
             return {
               id: inv.id,
-              valor_total: typeof inv.valor_total === 'string' ? 
+              valor_total: typeof inv.valor_total === 'string' ?
                 parseFloat(inv.valor_total || '0') : (inv.valor_total || 0),
               valor_fechado: typeof inv.valor_fechado === 'string' ?
                 parseFloat(inv.valor_fechado || '0') : (inv.valor_fechado || 0),
@@ -1182,9 +1182,9 @@ export default function CartoesPage() {
         <InvoiceActionsModal
           open={isInvoiceActionsModalOpen}
           onOpenChange={setIsInvoiceActionsModalOpen}
-        card={selectedCard}
-        competencia={formatCompetencia(new Date())}
-        onSuccess={refresh}
+          card={selectedCard}
+          competencia={formatCompetencia(new Date())}
+          onSuccess={refresh}
         />
       </div>
     );
@@ -1195,16 +1195,16 @@ export default function CartoesPage() {
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Cartões de Crédito</h1>
         <div className="flex gap-2">
-          <Button 
-            variant="outline" 
+          <Button
+            variant="outline"
             onClick={() => setIsAddPurchaseModalOpen(true)}
             disabled={activeCards.length === 0}
           >
             <ShoppingBag className="w-4 h-4 mr-2" />
             Nova Compra
           </Button>
-          <Button 
-            className="bg-gradient-primary" 
+          <Button
+            className="bg-gradient-primary"
             onClick={() => setIsNewCardModalOpen(true)}
             disabled={activeAccounts.length === 0}
           >
@@ -1224,7 +1224,7 @@ export default function CartoesPage() {
           const currentInvoice = getCurrentInvoice(card);
 
           return (
-            <Card 
+            <Card
               key={card.id}
               className="cursor-pointer hover:shadow-lg transition-all border-l-4 border-l-primary hover:scale-[1.02]"
               onClick={() => setSelectedCard(card)}
@@ -1240,7 +1240,7 @@ export default function CartoesPage() {
                       </CardDescription>
                     </div>
                   </div>
-                  <CircularProgress 
+                  <CircularProgress
                     value={usage}
                     max={limite}
                     size={60}
@@ -1260,7 +1260,7 @@ export default function CartoesPage() {
                   </div>
                   <div className="flex justify-between items-baseline pt-1 border-t">
                     <span className="text-sm text-muted-foreground">Disponível</span>
-                    <StatusBadge 
+                    <StatusBadge
                       status={usagePercentage >= 90 ? "error" : "success"}
                       label={formatCurrency(disponivel)}
                       size="sm"
@@ -1282,7 +1282,7 @@ export default function CartoesPage() {
                 </div>
 
                 <div className="flex gap-2 pt-2">
-                  <Button 
+                  <Button
                     size="sm"
                     variant="outline"
                     className="flex-1"
@@ -1296,7 +1296,7 @@ export default function CartoesPage() {
                     Nova Compra
                   </Button>
                   {currentInvoice?.status === "aberta" && (
-                    <Button 
+                    <Button
                       size="sm"
                       variant="outline"
                       onClick={(e) => {
@@ -1309,7 +1309,7 @@ export default function CartoesPage() {
                     </Button>
                   )}
                   {currentInvoice?.status === "fechada" && (
-                    <Button 
+                    <Button
                       size="sm"
                       onClick={(e) => {
                         e.stopPropagation();
@@ -1340,7 +1340,7 @@ export default function CartoesPage() {
           const invoice = invoices.find(inv => inv.cartao_id === selectedCard?.id);
           return invoice ? {
             id: invoice.id,
-            valor_total: typeof invoice.valor_total === 'string' ? 
+            valor_total: typeof invoice.valor_total === 'string' ?
               parseFloat(invoice.valor_total || '0') : (invoice.valor_total || 0),
             data_vencimento: invoice.data_vencimento,
             competencia: invoice.competencia,
