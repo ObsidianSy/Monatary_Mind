@@ -39,8 +39,7 @@ backups/
 .pm2/
 logs/
 
-# Lockfiles (manter apenas bun.lockb)
-package-lock.json
+# Lockfiles (permitir package-lock.json para Docker)
 yarn.lock
 pnpm-lock.yaml
 
