@@ -826,7 +826,12 @@ export default function CartoesPage() {
 
                       // Converter para array e ordenar
                       const groupedArray = Array.from(grouped.entries()).map(([key, items]) => {
-                        const sorted = items.sort((a, b) => a.parcela_numero - b.parcela_numero);
+                        // ✅ FIX: Converter parcela_numero para número antes de ordenar (pode vir como string do banco)
+                        const sorted = items.sort((a, b) => {
+                          const numA = typeof a.parcela_numero === 'string' ? parseInt(a.parcela_numero) : a.parcela_numero;
+                          const numB = typeof b.parcela_numero === 'string' ? parseInt(b.parcela_numero) : b.parcela_numero;
+                          return numA - numB;
+                        });
                         const isParcelado = items.length > 1 || items[0].parcela_total > 1;
                         const valorTotal = items.reduce((sum, i) =>
                           sum + (typeof i.valor === 'string' ? parseFloat(i.valor) : i.valor || 0), 0
