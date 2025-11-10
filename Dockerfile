@@ -9,7 +9,7 @@ ARG VITE_FINANCEIRO_TENANT_ID=obsidian
 ARG VITE_APP_URL=/
 
 # Copiar package files
-COPY package*.json ./
+COPY package.json package-lock.json ./
 COPY bun.lockb ./
 
 # Instalar dependências
