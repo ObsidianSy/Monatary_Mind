@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "lib": ["ES2023"],
+    "moduleResolution": "node16",
+    "outDir": "./dist-server",
+    "rootDir": "./server",
+    "strict": false,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "allowSyntheticDefaultImports": true,
+    "noImplicitAny": false,
+    "strictNullChecks": false,
+    "allowImportingTsExtensions": false
+  },
+  "include": ["server/**/*"],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "dist-server",
+    "server/test-*.ts",
+    "server/**/*.test.ts",
+    "server/**/*.spec.ts"
+  ]
+}

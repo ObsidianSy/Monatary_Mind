@@ -1,0 +1,50 @@
+# Dependências
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Build
+dist
+.cache
+
+# Ambiente
+.env
+.env.local
+.env.*.local
+.env.production
+.env.development
+
+# Git
+.git
+.gitignore
+
+# Documentação
+*.md
+docs/
+
+# Tests
+*.test.ts
+*.spec.ts
+test-*.ts
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Backup
+backup.sh
+*.sql
+
+# Scripts de desenvolvimento
+deploy.sh
+migrate.ps1

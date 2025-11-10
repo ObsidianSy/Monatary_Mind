@@ -1,0 +1,169 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Definition of the design system. All colors, gradients, fonts, etc should be defined here. 
+All colors MUST be HSL.
+*/
+
+@layer base {
+  :root {
+    /* Financial App Color Palette */
+    --background: 240 10% 98%;
+    --foreground: 230 15% 15%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 230 15% 15%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 230 15% 15%;
+
+    /* Primary - Financial Blue */
+    --primary: 217 91% 60%;
+    --primary-light: 217 91% 70%;
+    --primary-dark: 217 91% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    /* Secondary - Financial Green */
+    --secondary: 142 76% 36%;
+    --secondary-light: 142 76% 46%;
+    --secondary-dark: 142 76% 26%;
+    --secondary-foreground: 0 0% 100%;
+
+    /* Accent - Warm Orange for alerts */
+    --accent: 25 95% 53%;
+    --accent-light: 25 95% 63%;
+    --accent-foreground: 0 0% 100%;
+
+    /* Neutral tones */
+    --muted: 240 5% 96%;
+    --muted-foreground: 240 4% 46%;
+
+    /* Status colors */
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 45 93% 58%;
+    --warning-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 240 6% 92%;
+    --input: 240 6% 92%;
+    --ring: 217 91% 60%;
+
+    --radius: 0.75rem;
+
+    /* Sidebar - Dark theme */
+    --sidebar-background: 230 25% 8%;
+    --sidebar-foreground: 240 5% 84%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 230 20% 14%;
+    --sidebar-accent-foreground: 240 5% 84%;
+    --sidebar-border: 230 20% 18%;
+    --sidebar-ring: 217 91% 60%;
+
+    /* Financial specific gradients */
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-light)));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 76% 46%));
+    --gradient-card: linear-gradient(145deg, hsl(0 0% 100%), hsl(240 10% 98%));
+  }
+
+  .dark {
+    --background: 230 25% 8%;
+    --foreground: 240 5% 84%;
+
+    --card: 230 20% 12%;
+    --card-foreground: 240 5% 84%;
+
+    --popover: 230 20% 12%;
+    --popover-foreground: 240 5% 84%;
+
+    --primary: 217 91% 60%;
+    --primary-light: 217 91% 70%;
+    --primary-dark: 217 91% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 142 76% 36%;
+    --secondary-light: 142 76% 46%;
+    --secondary-dark: 142 76% 26%;
+    --secondary-foreground: 0 0% 100%;
+
+    --accent: 25 95% 53%;
+    --accent-light: 25 95% 63%;
+    --accent-foreground: 0 0% 100%;
+
+    --muted: 230 20% 14%;
+    --muted-foreground: 240 5% 64%;
+
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    
+    --warning: 45 93% 58%;
+    --warning-foreground: 0 0% 100%;
+    
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 230 20% 20%;
+    --input: 230 20% 20%;
+    --ring: 217 91% 60%;
+
+    --sidebar-background: 230 25% 8%;
+    --sidebar-foreground: 240 5% 84%;
+    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 230 20% 14%;
+    --sidebar-accent-foreground: 240 5% 84%;
+    --sidebar-border: 230 20% 18%;
+    --sidebar-ring: 217 91% 60%;
+
+    --gradient-primary: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary-light)));
+    --gradient-success: linear-gradient(135deg, hsl(var(--success)), hsl(142 76% 46%));
+    --gradient-card: linear-gradient(145deg, hsl(var(--card)), hsl(230 20% 16%));
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  }
+  
+  /* Smooth transitions for better UX */
+  * {
+    @apply transition-colors;
+  }
+  
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+  
+  ::-webkit-scrollbar-track {
+    @apply bg-muted/30;
+  }
+  
+  ::-webkit-scrollbar-thumb {
+    @apply bg-muted-foreground/30 rounded-full;
+  }
+  
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-muted-foreground/50;
+  }
+  
+  /* Fix for dropdowns in modals */
+  [data-radix-select-content] {
+    z-index: 9999 !important;
+  }
+  
+  [data-radix-popper-content-wrapper] {
+    z-index: 9999 !important;
+  }
+}
