@@ -1533,8 +1533,8 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
     const field = validFields.includes(orderField) ? orderField : 'data_compra';
     const direction = orderDir?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
-    // Ordenar por campo escolhido + parcela_numero como critério de desempate
-    queryText += ` ORDER BY fi.${field} ${direction}, fi.parcela_numero ASC`;
+    // ✅ FIX: Garantir ordenação numérica de parcela_numero (pode estar como TEXT no banco)
+    queryText += ` ORDER BY fi.${field} ${direction}, CAST(fi.parcela_numero AS INTEGER) ASC`;
     queryText += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit as string), parseInt(offset as string));
 
