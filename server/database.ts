@@ -14,13 +14,16 @@ export const pool = new Pool({
   max: 20, // Máximo de conexões no pool
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
-  // Usar schema financeiro por padrão
-  options: '-c search_path=financeiro,public',
 });
 
-// Testa a conexão ao iniciar
-pool.on('connect', () => {
-  console.log('✅ Conectado ao PostgreSQL');
+// Testa a conexão ao iniciar e define search_path
+pool.on('connect', async (client) => {
+  try {
+    await client.query('SET search_path TO financeiro, public');
+    console.log('✅ Conectado ao PostgreSQL com search_path=financeiro,public');
+  } catch (error) {
+    console.error('❌ Erro ao configurar search_path:', error);
+  }
 });
 
 pool.on('error', (err) => {
