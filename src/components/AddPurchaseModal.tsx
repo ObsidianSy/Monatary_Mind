@@ -86,30 +86,39 @@ export default function AddPurchaseModal({
     });
   };
 
-  // Calcula competência baseada no dia de fechamento
+  // Calcula competência baseada no dia de fechamento (sem dependência de timezone)
   const getCompetencia = (dataCompra: Date, cartaoId: string) => {
     const cartao = activeCards.find(c => c.id === cartaoId);
-    if (!cartao) return format(dataCompra, "yyyy-MM-01");
-    
+    // Helper para montar yyyy-MM-01 sem criar Date (evita shift de timezone)
+    const buildCompetencia = (year: number, monthIndexZeroBased: number) => {
+      const y = String(year);
+      const m = String(monthIndexZeroBased + 1).padStart(2, '0');
+      return `${y}-${m}-01`;
+    };
+
     const diaCompra = dataCompra.getDate();
-    const diaFechamento = cartao.dia_fechamento;
-    
-    let competenciaCalculada: string;
-    if (diaCompra <= diaFechamento) {
-      competenciaCalculada = format(dataCompra, "yyyy-MM-01");
-    } else {
-      competenciaCalculada = format(addMonths(dataCompra, 1), "yyyy-MM-01");
+    const year = dataCompra.getFullYear();
+    const monthIndex = dataCompra.getMonth(); // 0..11
+
+    if (!cartao) {
+      return buildCompetencia(year, monthIndex);
     }
-    
-    console.log(`🗓️ getCompetencia:`, {
-      dataCompra: format(dataCompra, "dd/MM/yyyy"),
-      diaCompra,
-      diaFechamento,
-      entraProximaFatura: diaCompra > diaFechamento,
-      competencia: competenciaCalculada
-    });
-    
-    return competenciaCalculada;
+
+    const diaFechamento = cartao.dia_fechamento;
+
+    // Se compra após o dia de fechamento, vai para a competência do mês seguinte
+    if (diaCompra > diaFechamento) {
+      const nextMonth = monthIndex + 1;
+      const nextYear = year + Math.floor(nextMonth / 12);
+      const nextMonthIndex = nextMonth % 12;
+      const competencia = buildCompetencia(nextYear, nextMonthIndex);
+      console.log('🗓️ getCompetencia', { dataCompra: format(dataCompra, 'dd/MM/yyyy'), diaCompra, diaFechamento, competencia, entraProximaFatura: true });
+      return competencia;
+    }
+
+    const competencia = buildCompetencia(year, monthIndex);
+    console.log('🗓️ getCompetencia', { dataCompra: format(dataCompra, 'dd/MM/yyyy'), diaCompra, diaFechamento, competencia, entraProximaFatura: false });
+    return competencia;
   };
 
   // Gera preview das parcelas
@@ -121,19 +130,17 @@ export default function AddPurchaseModal({
     const valorTotal = parseFloat(form.valor);
     const valorParcela = valorTotal / form.parcela_total;
     const competenciaInicial = getCompetencia(form.data_compra, form.cartao_id);
-    
+
+    // Extrair ano/mes do formato yyyy-MM-01
+    const [anoStr, mesStr] = competenciaInicial.split('-');
+    const ano = parseInt(anoStr, 10);
+    const mesIndex = parseInt(mesStr, 10) - 1; // 0..11
+
     return Array.from({ length: form.parcela_total }, (_, i) => {
-      // ✅ Usar parseISO para evitar shift de timezone
-      const dataBase = parseISO(competenciaInicial);
-      const dataCompetencia = addMonths(dataBase, i);
-      const competencia = format(dataCompetencia, "yyyy-MM-dd");
-      const mesAno = format(dataCompetencia, "MMM/yyyy", { locale: ptBR });
-      
-      return {
-        numero: i + 1,
-        valor: valorParcela,
-        competencia: mesAno
-      };
+      const dataCompetencia = new Date(ano, mesIndex + i, 1);
+      const competencia = format(dataCompetencia, 'yyyy-MM-dd');
+      const mesAno = format(dataCompetencia, 'MMM/yyyy', { locale: ptBR });
+      return { numero: i + 1, valor: valorParcela, competencia: mesAno };
     });
   }, [form.valor, form.parcela_total, form.data_compra, form.cartao_id, form.tipo_compra, activeCards]);
 
@@ -205,39 +212,39 @@ export default function AddPurchaseModal({
     } else {
       // Compra parcelada - múltiplos itens
       const competenciaInicial = getCompetencia(form.data_compra, form.cartao_id);
-      
-      console.log(`🗓️ Competencia inicial calculada: ${competenciaInicial} (Data compra: ${format(form.data_compra, "dd/MM/yyyy")})`);
-      
+      console.log(`🗓️ Competencia inicial calculada (TZ-safe): ${competenciaInicial} (Data compra: ${format(form.data_compra, 'dd/MM/yyyy')})`);
+
+      // Parse ano/mes da competência inicial
+      const [anoStr, mesStr] = competenciaInicial.split('-');
+      const anoBase = parseInt(anoStr, 10);
+      const mesBaseIndex = parseInt(mesStr, 10) - 1;
+
       try {
         for (let i = 0; i < form.parcela_total; i++) {
-          // ✅ IMPORTANTE: usar parseISO para evitar problemas de timezone
-          const dataBase = parseISO(competenciaInicial);
-          const dataCompetencia = addMonths(dataBase, i);
-          const competencia = format(dataCompetencia, "yyyy-MM-dd");
+          const dataCompetencia = new Date(anoBase, mesBaseIndex + i, 1);
+          const competencia = format(dataCompetencia, 'yyyy-MM-dd');
           const descricao = `${form.descricao} (${i + 1}/${form.parcela_total})`;
-          
           console.log(`📤 Enviando parcela ${i + 1}/${form.parcela_total}:`, {
             numero: i + 1,
             total: form.parcela_total,
             descricao,
             competencia,
-            competenciaDisplay: format(dataCompetencia, "MMM/yyyy"),
+            competenciaDisplay: format(dataCompetencia, 'MMM/yyyy'),
             valor: valorParcela,
             categoria_id: form.categoria_id
           });
-          
           try {
             await createPurchase({
               cartao_id: form.cartao_id,
               competencia,
               descricao,
               valor: valorParcela,
-              data_compra: format(form.data_compra, "yyyy-MM-dd"),
+              data_compra: format(form.data_compra, 'yyyy-MM-dd'),
               categoria_id: form.categoria_id,
               parcela_numero: i + 1,
               parcela_total: form.parcela_total
             });
-            console.log(`✅ Parcela ${i + 1}/${form.parcela_total} criada com sucesso`);
+            console.log(`✅ Parcela ${i + 1}/${form.parcela_total} criada com sucesso (competencia ${competencia})`);
           } catch (parcelaError: any) {
             console.error(`❌ ERRO na parcela ${i + 1}/${form.parcela_total}:`, parcelaError);
             throw new Error(`Erro na parcela ${i + 1}: ${parcelaError.message}`);

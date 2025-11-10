@@ -1255,7 +1255,13 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
       if (!faturaIdToUse) {
         // Buscar ou criar fatura para a competência
-        const competenciaToUse = competencia || new Date(data_compra).toISOString().substring(0, 7) + '-01';
+        // ✅ TZ-safe: construir competencia sem depender de toISOString (evita voltar um dia em UTC)
+        const competenciaToUse = competencia || (() => {
+          const dc = new Date(data_compra);
+          const year = dc.getFullYear();
+          const month = String(dc.getMonth() + 1).padStart(2, '0');
+          return `${year}-${month}-01`;
+        })();
 
         const faturaExistente = await client.query(
           `SELECT id, status FROM financeiro.fatura 
