@@ -60,4 +60,14 @@ export async function transaction<T>(callback: (client: any) => Promise<T>): Pro
   }
 }
 
+// Log de conexão para debug
+(async () => {
+  try {
+    const res = await pool.query('SELECT current_database() as db, current_user as user, current_schema as schema, current_setting(\'search_path\') as search_path');
+    console.log('🔎 Banco conectado:', res.rows[0]);
+  } catch (e) {
+    console.error('Erro ao logar info do banco:', e);
+  }
+})();
+
 export default pool;
