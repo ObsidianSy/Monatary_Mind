@@ -8,7 +8,7 @@ pnpm-debug.log*
 lerna-debug.log*
 
 node_modules
-dist
+# dist ← COMENTADO: permitir commit do build
 dist-ssr
 *.local
 
