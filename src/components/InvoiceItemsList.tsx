@@ -4,6 +4,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { usePrivacy } from "@/contexts/PrivacyContext";
 import { censorValue } from "@/lib/utils";
 import { formatDateYmdToBr } from "@/lib/date"; // ✅ Helpers TZ-safe
+import { useEffect } from "react";
 
 interface InvoiceItemsListProps {
   invoiceId: string;
@@ -14,6 +15,23 @@ interface InvoiceItemsListProps {
 export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: InvoiceItemsListProps) {
   const { items, loading } = useInvoiceItems(invoiceId);
   const { isValuesCensored } = usePrivacy();
+
+  // 🔥 DEBUG: Ver dados brutos que chegam do backend
+  useEffect(() => {
+    if (items.length > 0) {
+      console.log('🔥 InvoiceItemsList - Itens recebidos:', items.slice(0, 3).map(i => ({
+        descricao: i.descricao,
+        parcela_numero: i.parcela_numero,
+        parcela_total: i.parcela_total,
+        data_compra: i.data_compra,
+        tipos: {
+          parcela_numero: typeof i.parcela_numero,
+          parcela_total: typeof i.parcela_total,
+          data_compra: typeof i.data_compra
+        }
+      })));
+    }
+  }, [items]);
 
   if (loading) {
     return (

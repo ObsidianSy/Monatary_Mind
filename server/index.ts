@@ -1579,15 +1579,17 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
 
     const result = await query(queryText, params);
 
-    // 📊 DEBUG: Log dos primeiros 3 itens para verificar formato
-    console.log('📄 GET /api/faturas/itens - Sample:', result.rows.slice(0, 3).map(r => ({
-      id: r.id,
-      data_compra: r.data_compra,
-      data_compra_type: typeof r.data_compra,
-      parcela_numero: r.parcela_numero,
-      parcela_total: r.parcela_total,
-      competencia: r.competencia
-    })));
+    // � DEBUG INTENSIVO: Ver TODAS as parcelas retornadas
+    console.log('\n�🔥🔥 DEBUG COMPLETO - Total itens:', result.rows.length);
+    result.rows.forEach((row, idx) => {
+      console.log(`\n[${idx + 1}] ${row.descricao}`);
+      console.log(`    📅 Data Compra: ${row.data_compra} (tipo: ${typeof row.data_compra})`);
+      console.log(`    🔢 Parcela: ${row.parcela_numero}/${row.parcela_total} (tipos: ${typeof row.parcela_numero}/${typeof row.parcela_total})`);
+      console.log(`    💰 Valor: R$ ${row.valor}`);
+      console.log(`    📆 Competência: ${row.competencia}`);
+      console.log(`    🆔 ID: ${row.id}`);
+    });
+    console.log('\n🔥🔥🔥 FIM DEBUG\n');
 
     res.json(result.rows);
   } catch (error: any) {

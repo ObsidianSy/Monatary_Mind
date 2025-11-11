@@ -634,6 +634,15 @@ export default function CartoesPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
+                    {/* 🔥 DEBUG: Log dos itens filtrados */}
+                    {console.log('🔥 Cartoes.tsx - Itens filtrados (Aberta):', filteredItems.slice(0, 3).map(i => ({
+                      descricao: i.descricao,
+                      parcela_numero: i.parcela_numero,
+                      parcela_total: i.parcela_total,
+                      data_compra: i.data_compra,
+                      tipos: { parcela_numero: typeof i.parcela_numero, parcela_total: typeof i.parcela_total }
+                    })))}
+                    
                     {/* Busca de compras */}
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4 text-muted-foreground" />
