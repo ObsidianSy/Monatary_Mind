@@ -20,6 +20,8 @@ import {
   AuthRequest
 } from './auth.js';
 
+console.log('TZ:', Intl.DateTimeFormat().resolvedOptions().timeZone, new Date().toString());
+
 // Carregar variáveis de ambiente do arquivo .env em desenvolvimento
 if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
@@ -1817,14 +1819,14 @@ app.get("/api/debug/parcelas", async (req, res) => {
       WHERE descricao ILIKE '%tess%'
       ORDER BY created_at DESC, parcela_numero
     `);
-    
+
     const agrupado = result.rows.reduce((acc: any, p: any) => {
       const key = `${p.descricao}_${p.data_compra}_${p.parcela_total}x`;
       if (!acc[key]) acc[key] = [];
       acc[key].push(p);
       return acc;
     }, {});
-    
+
     res.json({
       total_no_banco: result.rows.length,
       todas_parcelas: result.rows,
