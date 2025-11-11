@@ -82,6 +82,8 @@ const iconOptions = [
     { value: 'building', label: 'Prédio', Icon: Building2 },
 ];
 
+const API_BASE_URL = import.meta.env.VITE_API_URL || '/api';
+
 export default function Workspaces() {
     const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
     const [isLoading, setIsLoading] = useState(true);
@@ -112,7 +114,7 @@ export default function Workspaces() {
         try {
             setIsLoading(true);
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3001/api/workspaces/all', {
+            const response = await fetch(`${API_BASE_URL}/workspaces/all`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -176,8 +178,8 @@ export default function Workspaces() {
 
             const token = localStorage.getItem('token');
             const url = editingWorkspace
-                ? `http://localhost:3001/api/workspaces/${editingWorkspace.id}`
-                : 'http://localhost:3001/api/workspaces';
+                ? `${API_BASE_URL}/workspaces/${editingWorkspace.id}`
+                : `${API_BASE_URL}/workspaces`;
 
             const method = editingWorkspace ? 'PUT' : 'POST';
 
@@ -216,7 +218,7 @@ export default function Workspaces() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/workspaces/${deletingWorkspace.id}`, {
+            const response = await fetch(`${API_BASE_URL}/workspaces/${deletingWorkspace.id}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -248,7 +250,7 @@ export default function Workspaces() {
     const loadWorkspaceUsers = async (workspaceId: string) => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/workspaces/${workspaceId}/users`, {
+            const response = await fetch(`${API_BASE_URL}/workspaces/${workspaceId}/users`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -270,7 +272,7 @@ export default function Workspaces() {
     const loadAllUsers = async () => {
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch('http://localhost:3001/api/users/all', {
+            const response = await fetch(`${API_BASE_URL}/users/all`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -303,7 +305,7 @@ export default function Workspaces() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/workspaces/${selectedWorkspace.id}/users`, {
+            const response = await fetch(`${API_BASE_URL}/workspaces/${selectedWorkspace.id}/users`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -338,7 +340,7 @@ export default function Workspaces() {
 
         try {
             const token = localStorage.getItem('token');
-            const response = await fetch(`http://localhost:3001/api/workspaces/${selectedWorkspace.id}/users/${userId}`, {
+            const response = await fetch(`${API_BASE_URL}/workspaces/${selectedWorkspace.id}/users/${userId}`, {
                 method: 'DELETE',
                 headers: {
                     'Authorization': `Bearer ${token}`,

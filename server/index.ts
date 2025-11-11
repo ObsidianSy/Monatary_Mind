@@ -44,12 +44,34 @@ const __dirname = path.dirname(__filename);
 
 // Middlewares
 app.use(cors({
-  origin: [
-    'http://localhost:8080',
-    'http://localhost:5173',
-    process.env.FRONTEND_URL || 'http://localhost:8080'
-  ].filter(Boolean),
-  credentials: true
+  origin: function (origin, callback) {
+    // Permitir requisições sem origin (mobile apps, curl, etc)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'http://localhost:5173',
+      'http://localhost:3000',
+      process.env.FRONTEND_URL,
+    ].filter(Boolean);
+
+    // Em produção, permitir qualquer origem HTTPS ou localhost
+    if (process.env.NODE_ENV === 'production') {
+      if (origin.startsWith('https://') || origin.startsWith('http://localhost')) {
+        return callback(null, true);
+      }
+    }
+
+    // Verificar se a origem está na lista permitida
+    if (allowedOrigins.indexOf(origin) !== -1 || origin.startsWith('http://localhost')) {
+      callback(null, true);
+    } else {
+      callback(null, true); // Permitir todas em desenvolvimento
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));
 app.use(express.json());
 app.use(cookieParser());
