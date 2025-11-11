@@ -794,7 +794,7 @@ export default function CartoesPage() {
 
                       if (extractPeriodFilter !== "all") {
                         periodFilteredItems = allCardPurchases.filter(item => {
-                          const itemDate = new Date(item.data_compra);
+                          const itemDate = parseDateLocal(item.data_compra);
                           const diffMonths = (now.getFullYear() - itemDate.getFullYear()) * 12 +
                             (now.getMonth() - itemDate.getMonth());
 
@@ -854,7 +854,7 @@ export default function CartoesPage() {
                           valorTotal
                         };
                       }).sort((a, b) =>
-                        new Date(b.firstItem.data_compra).getTime() - new Date(a.firstItem.data_compra).getTime()
+                        parseDateLocal(b.firstItem.data_compra).getTime() - parseDateLocal(a.firstItem.data_compra).getTime()
                       );
 
                       return (
@@ -865,7 +865,7 @@ export default function CartoesPage() {
                                 <div className="flex items-center justify-between w-full pr-3">
                                   <div className="flex items-center gap-3 flex-1 min-w-0">
                                     <div className="text-sm text-muted-foreground whitespace-nowrap">
-                                      {format(new Date(firstItem.data_compra), "dd/MM/yyyy")}
+                                      {formatDateYmdToBr(firstItem.data_compra)}
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <p className="font-medium text-left truncate">

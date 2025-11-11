@@ -1174,6 +1174,8 @@ app.post('/api/compras', async (req: Request, res: Response) => {
       data_compra_parseada: data_compra ? new Date(data_compra) : null
     });
 
+    console.log(`🔥 CRIANDO COMPRA: "${descricao}" - Parcela ${parcela_numero || 1}/${parcela_total || 1}`);
+
     if (!cartao_id || !descricao || !valor || !data_compra) {
       console.error('❌ Validacao falhou - campos obrigatorios faltando');
       return res.status(400).json({
