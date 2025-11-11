@@ -47,7 +47,7 @@ export default function PayInvoiceModal({ open, onOpenChange, invoice, onSuccess
   const { toast } = useToast();
   const client = useFinanceiroClient({ tenantId: "obsidian" });
   const { activeAccounts } = useAccounts();
-  
+
   const { postEvent, posting } = usePostEvent(client, {
     onSuccess: () => {
       toast({
@@ -71,10 +71,10 @@ export default function PayInvoiceModal({ open, onOpenChange, invoice, onSuccess
   useEffect(() => {
     if (invoice) {
       // Usar valor_fechado se fatura estiver fechada, senão usar valor_total calculado dos itens
-      const valorFatura = invoice.status === 'fechada' && invoice.valor_fechado 
-        ? invoice.valor_fechado 
+      const valorFatura = invoice.status === 'fechada' && invoice.valor_fechado
+        ? invoice.valor_fechado
         : invoice.valor_total;
-        
+
       setForm({
         conta_id: "",
         valor_pago: valorFatura.toString(),
@@ -102,7 +102,7 @@ export default function PayInvoiceModal({ open, onOpenChange, invoice, onSuccess
     }
 
     const valorPago = parseFloat(form.valor_pago.replace(",", "."));
-    
+
     if (valorPago <= 0) {
       toast({
         title: "Valor inválido",
@@ -212,8 +212,8 @@ export default function PayInvoiceModal({ open, onOpenChange, invoice, onSuccess
               <Label htmlFor="data">Data do Pagamento *</Label>
               <Popover>
                 <PopoverTrigger asChild>
-                  <Button 
-                    variant="outline" 
+                  <Button
+                    variant="outline"
                     className={cn(
                       "w-full justify-start text-left font-normal",
                       !form.data_pagamento && "text-muted-foreground"

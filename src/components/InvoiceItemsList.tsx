@@ -14,7 +14,7 @@ interface InvoiceItemsListProps {
 export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: InvoiceItemsListProps) {
   const { items, loading } = useInvoiceItems(invoiceId);
   const { isValuesCensored } = usePrivacy();
-  
+
   if (loading) {
     return (
       <div className="space-y-2 p-4">
@@ -24,7 +24,7 @@ export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: Invo
       </div>
     );
   }
-  
+
   if (!items || items.length === 0) {
     return (
       <div className="p-4 text-center text-muted-foreground">
@@ -32,7 +32,7 @@ export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: Invo
       </div>
     );
   }
-  
+
   // Ordenar itens por data mais recente primeiro
   const sortedItems = [...items].sort((a, b) => {
     const dateA = new Date(a.data_compra);
@@ -46,7 +46,7 @@ export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: Invo
         const category = categories.find(c => c.id === item.categoria_id);
         const valor = typeof item.valor === 'string' ? parseFloat(item.valor) : item.valor;
         const displayValue = censorValue(formatCurrency(Number(valor)), isValuesCensored);
-        
+
         return (
           <div key={item.id} className="flex justify-between items-center py-2 px-3 bg-muted/30 rounded-md border border-border/40">
             <div className="min-w-0 flex-1">

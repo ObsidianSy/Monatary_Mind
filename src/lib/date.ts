@@ -20,15 +20,15 @@
  * formatDateYmdToBr(null) → ''
  */
 export function formatDateYmdToBr(value?: string | null): string {
-  if (!value) return '';
-  
-  // Pega apenas a parte da data (antes de 'T' se houver)
-  const datePart = value.split('T')[0];
-  const [year, month, day] = datePart.split('-');
-  
-  if (!year || !month || !day) return '';
-  
-  return `${day}/${month}/${year}`;
+    if (!value) return '';
+
+    // Pega apenas a parte da data (antes de 'T' se houver)
+    const datePart = value.split('T')[0];
+    const [year, month, day] = datePart.split('-');
+
+    if (!year || !month || !day) return '';
+
+    return `${day}/${month}/${year}`;
 }
 
 /**
@@ -43,12 +43,12 @@ export function formatDateYmdToBr(value?: string | null): string {
  * parseDateLocal('2025-11') → Date(2025, 10, 1, 0, 0, 0)
  */
 export function parseDateLocal(dateStr?: string | null): Date {
-  if (!dateStr) return new Date();
-  
-  const [y, m, d] = dateStr.split('T')[0].split('-').map(Number);
-  
-  // Mês é 0-indexed em JS: Janeiro = 0, Dezembro = 11
-  return new Date(y, (m || 1) - 1, d || 1);
+    if (!dateStr) return new Date();
+
+    const [y, m, d] = dateStr.split('T')[0].split('-').map(Number);
+
+    // Mês é 0-indexed em JS: Janeiro = 0, Dezembro = 11
+    return new Date(y, (m || 1) - 1, d || 1);
 }
 
 /**
@@ -62,11 +62,11 @@ export function parseDateLocal(dateStr?: string | null): Date {
  * dateToYmd(new Date(2025, 10, 10)) → '2025-11-10'
  */
 export function dateToYmd(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  
-  return `${year}-${month}-${day}`;
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+
+    return `${year}-${month}-${day}`;
 }
 
 /**
@@ -80,15 +80,15 @@ export function dateToYmd(date: Date): string {
  * formatCompetencia('2025-02') → 'Fev/2025'
  */
 export function formatCompetencia(dateStr: string | Date): string {
-  const date = typeof dateStr === 'string' ? parseDateLocal(dateStr) : dateStr;
-  
-  const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 
-                  'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
-  
-  const month = months[date.getMonth()];
-  const year = date.getFullYear();
-  
-  return `${month}/${year}`;
+    const date = typeof dateStr === 'string' ? parseDateLocal(dateStr) : dateStr;
+
+    const months = ['Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun',
+        'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
+    const month = months[date.getMonth()];
+    const year = date.getFullYear();
+
+    return `${month}/${year}`;
 }
 
 /**
@@ -103,9 +103,9 @@ export function formatCompetencia(dateStr: string | Date): string {
  * addMonthsSafe('2025-01-31', 1) → Date(2025, 1, 28/29) [fev/2025]
  */
 export function addMonthsSafe(dateStr: string, months: number): Date {
-  const date = parseDateLocal(dateStr);
-  date.setMonth(date.getMonth() + months);
-  return date;
+    const date = parseDateLocal(dateStr);
+    date.setMonth(date.getMonth() + months);
+    return date;
 }
 
 /**
@@ -118,6 +118,6 @@ export function addMonthsSafe(dateStr: string, months: number): Date {
  * getCompetenciaFromDate('2025-11-15') → '2025-11-01'
  */
 export function getCompetenciaFromDate(dateStr: string): string {
-  const [year, month] = dateStr.split('-');
-  return `${year}-${month}-01`;
+    const [year, month] = dateStr.split('-');
+    return `${year}-${month}-01`;
 }
