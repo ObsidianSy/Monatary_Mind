@@ -48,6 +48,7 @@ import { TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { formatCompetencia, parseDate } from "@/lib/date-utils";
 import { formatCurrency } from "@/lib/utils";
+import { formatDateYmdToBr, parseDateLocal } from "@/lib/date"; // ✅ Helpers TZ-safe
 
 export default function CartoesPage() {
   const [selectedCard, setSelectedCard] = useState<CreditCard | null>(null);
@@ -74,7 +75,6 @@ export default function CartoesPage() {
     order: "data_compra.desc",
     limit: 1000
   });
-
 
   // Itens de fatura do mês atual para TODOS os cartões (para montar o 'Usado' no grid)
   // ✅ CORRIGIDO: Backend espera competencia no formato YYYY-MM-DD completo
@@ -480,7 +480,7 @@ export default function CartoesPage() {
                   <div className="space-y-2 text-sm">
                     <div className="flex items-center justify-between">
                       <span className="text-muted-foreground">Vencimento:</span>
-                      <span className="font-medium">{format(new Date(currentInvoice.data_vencimento), "dd/MM/yyyy")}</span>
+                      <span className="font-medium">{formatDateYmdToBr(currentInvoice.data_vencimento)}</span>
                     </div>
                     {daysUntilDue !== null && daysUntilDue >= 0 && (
                       <div className="flex items-center justify-between">
@@ -659,7 +659,7 @@ export default function CartoesPage() {
                       <TableBody>
                         {filteredItems.map((item) => (
                           <CompactTableRow key={item.id}>
-                            <TableCell>{format(new Date(item.data_compra), "dd/MM/yyyy")}</TableCell>
+                            <TableCell>{formatDateYmdToBr(item.data_compra)}</TableCell>
                             <TableCell className="font-medium">{item.descricao}</TableCell>
                             <TableCell>
                               <Badge variant="outline">
@@ -888,7 +888,7 @@ export default function CartoesPage() {
                                             {item.parcela_numero}/{item.parcela_total}
                                           </Badge>
                                           <span className="text-xs text-muted-foreground">
-                                            {format(new Date(item.competencia), "MMM/yyyy", { locale: ptBR })}
+                                            {format(parseDateLocal(item.competencia), "MMM/yyyy", { locale: ptBR })}
                                           </span>
                                         </div>
                                         <ValueDisplay

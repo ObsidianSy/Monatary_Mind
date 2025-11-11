@@ -3,6 +3,7 @@ import { useInvoiceItems } from "@/hooks/useFinancialData";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usePrivacy } from "@/contexts/PrivacyContext";
 import { censorValue } from "@/lib/utils";
+import { formatDateYmdToBr } from "@/lib/date"; // ✅ Helpers TZ-safe
 
 interface InvoiceItemsListProps {
   invoiceId: string;
@@ -54,7 +55,7 @@ export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: Invo
                 {category?.nome || "Sem categoria"}
                 {item.parcela_numero && ` • ${item.parcela_numero}/${item.parcela_total}`}
                 {" • "}
-                {format(new Date(item.data_compra), "dd/MM/yyyy")}
+                {formatDateYmdToBr(item.data_compra)}
               </p>
             </div>
             <p className="text-sm font-semibold ml-3 flex-shrink-0">{displayValue}</p>

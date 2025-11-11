@@ -9,6 +9,7 @@ import type { Invoice } from "@/types/financial";
 import type { Category } from "@/hooks/useCategories";
 import { usePrivacy } from "@/contexts/PrivacyContext";
 import { censorValue } from "@/lib/utils";
+import { formatDateYmdToBr, parseDateLocal } from "@/lib/date"; // ✅ Helpers TZ-safe
 
 interface InvoiceHistoryItemProps {
   invoice: Invoice;
@@ -38,8 +39,11 @@ export function InvoiceHistoryItem({ invoice, categories, formatCurrency }: Invo
 
   // Verificar se está em atraso
   const now = new Date();
-  const vencimento = new Date(invoice.data_vencimento);
+  const vencimento = parseDateLocal(invoice.data_vencimento); // ✅ TZ-safe
   const emAtraso = invoice.status === 'aberta' && vencimento < now;
+
+  // TZ-safe parse para competência (YYYY-MM-DD ou YYYY-MM)
+  const competenciaDate = parseDateLocal(String(invoice.competencia));
 
   return (
     <AccordionItem value={invoice.id} className={`border-b last:border-b-0 ${emAtraso ? 'bg-destructive/5 border-destructive/20' : ''}`}>
@@ -57,12 +61,11 @@ export function InvoiceHistoryItem({ invoice, categories, formatCurrency }: Invo
             )}
             <div className="text-left">
               <p className="text-sm font-medium capitalize">
-                {format(new Date(invoice.competencia), "MMMM 'de' yyyy", { locale: ptBR })}
+                {format(competenciaDate, "MMMM 'de' yyyy", { locale: ptBR })}
               </p>
               <p className="text-xs text-muted-foreground">
-                Venc: {format(new Date(invoice.data_vencimento), "dd/MM/yyyy")}
                 {invoice.data_pagamento && (
-                  <> • Pago: {format(new Date(invoice.data_pagamento), "dd/MM/yyyy")}</>
+                  <> • Pago: {formatDateYmdToBr(invoice.data_pagamento)}</>
                 )}
                 {totalCompras > 0 && (
                   <> • {totalCompras} {totalCompras === 1 ? 'compra' : 'compras'}</>
@@ -119,7 +122,7 @@ export function InvoiceHistoryItem({ invoice, categories, formatCurrency }: Invo
                     {category?.nome && <span>{category.nome}</span>}
                     {category?.nome && item.data_compra && <span>•</span>}
                     {item.data_compra && (
-                      <span>{format(new Date(item.data_compra), "dd/MM/yyyy")}</span>
+                      <span>{formatDateYmdToBr(item.data_compra)}</span>
                     )}
                   </div>
                 </div>

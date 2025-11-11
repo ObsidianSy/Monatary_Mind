@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useFinanceiroClient, usePostEvent } from "@/hooks/useFinanceiro";
 import { useAccounts } from "@/hooks/useAccounts";
 import { formatCurrency } from "@/lib/utils";
+import { formatDateYmdToBr, parseDateLocal } from "@/lib/date"; // ✅ Helpers TZ-safe
 
 interface PayInvoiceModalProps {
   open: boolean;
@@ -144,7 +145,7 @@ export default function PayInvoiceModal({ open, onOpenChange, invoice, onSuccess
             Pagar Fatura
           </DialogTitle>
           <DialogDescription>
-            Registre o pagamento da fatura de {format(new Date(invoice.competencia), "MMM/yyyy", { locale: ptBR })}
+            Registre o pagamento da fatura de {format(parseDateLocal(invoice.competencia), "MMM/yyyy", { locale: ptBR })}
           </DialogDescription>
         </DialogHeader>
 
@@ -158,7 +159,7 @@ export default function PayInvoiceModal({ open, onOpenChange, invoice, onSuccess
             <div className="flex justify-between items-center mb-2">
               <span className="text-sm text-muted-foreground">Vencimento</span>
               <span className="text-sm">
-                {new Date(invoice.data_vencimento).toLocaleDateString('pt-BR')}
+                {formatDateYmdToBr(invoice.data_vencimento)}
               </span>
             </div>
             {isOverdue(invoice.data_vencimento) && (

@@ -1514,11 +1514,27 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
       offset = '0'
     } = req.query;
 
+    // ✅ FIX: Retornar data_compra e competencia como strings YYYY-MM-DD
+    // Evita conversão automática Date → ISO UTC → shift de timezone no front
     let queryText = `
-      SELECT fi.*, 
-             cat.nome as categoria_nome,
-             cat.parent_id as categoria_parent_id,
-             parent_cat.nome as categoria_pai_nome
+      SELECT 
+        fi.id,
+        fi.fatura_id,
+        fi.categoria_id,
+        fi.descricao,
+        TO_CHAR(fi.data_compra, 'YYYY-MM-DD') AS data_compra,
+        fi.parcela_numero,
+        fi.parcela_total,
+        fi.valor,
+        TO_CHAR(fi.competencia, 'YYYY-MM-DD') AS competencia,
+        fi.cartao_id,
+        fi.tenant_id,
+        fi.created_at,
+        fi.updated_at,
+        fi.is_deleted,
+        cat.nome AS categoria_nome,
+        cat.parent_id AS categoria_parent_id,
+        parent_cat.nome AS categoria_pai_nome
       FROM financeiro.fatura_item fi
       LEFT JOIN financeiro.categoria cat ON fi.categoria_id = cat.id
       LEFT JOIN financeiro.categoria parent_cat ON cat.parent_id = parent_cat.id
@@ -1558,6 +1574,17 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
     params.push(parseInt(limit as string), parseInt(offset as string));
 
     const result = await query(queryText, params);
+
+    // 📊 DEBUG: Log dos primeiros 3 itens para verificar formato
+    console.log('📄 GET /api/faturas/itens - Sample:', result.rows.slice(0, 3).map(r => ({
+      id: r.id,
+      data_compra: r.data_compra,
+      data_compra_type: typeof r.data_compra,
+      parcela_numero: r.parcela_numero,
+      parcela_total: r.parcela_total,
+      competencia: r.competencia
+    })));
+
     res.json(result.rows);
   } catch (error: any) {
     console.error('Erro ao buscar itens de fatura:', error);
