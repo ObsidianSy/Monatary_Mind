@@ -25,6 +25,14 @@ if (process.env.NODE_ENV !== 'production') {
   dotenv.config();
 }
 
+// ✅ Helper para converter Date para YYYY-MM-DD sem timezone shift
+function toYmd(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -1308,8 +1316,8 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
           console.log('DEBUG Criando nova fatura:', {
             cartao_id, competenciaToUse,
-            data_vencimento: dataVencimento.toISOString().split('T')[0],
-            data_fechamento: dataFechamento.toISOString().split('T')[0]
+            data_vencimento: toYmd(dataVencimento),
+            data_fechamento: toYmd(dataFechamento)
           });
 
           // Criar fatura
@@ -1318,8 +1326,8 @@ app.post('/api/compras', async (req: Request, res: Response) => {
              (cartao_id, competencia, data_vencimento, data_fechamento, valor_fechado, status, tenant_id)
              VALUES ($1, $2, $3, $4, 0, 'aberta', $5)
              RETURNING id`,
-            [cartao_id, competenciaToUse, dataVencimento.toISOString().split('T')[0],
-              dataFechamento.toISOString().split('T')[0], tenant_id]
+            [cartao_id, competenciaToUse, toYmd(dataVencimento),
+              toYmd(dataFechamento), tenant_id]
           ).catch((err) => {
             // Tratar erro de duplicação (UNIQUE constraint)
             if (err.code === '23505') { // duplicate key
@@ -1438,9 +1446,9 @@ app.post('/api/compras', async (req: Request, res: Response) => {
           console.log(`✅ Transação ${faturaInfo.transacao_id} atualizada: R$ ${valorTotal}`);
         } else {
           // Criar nova transação "A Pagar"
-          // Converter data_vencimento para string YYYY-MM-DD
+          // Converter data_vencimento para string YYYY-MM-DD (TZ-safe)
           const dataVencimentoStr = faturaInfo.data_vencimento instanceof Date
-            ? faturaInfo.data_vencimento.toISOString().split('T')[0]
+            ? toYmd(faturaInfo.data_vencimento)
             : String(faturaInfo.data_vencimento).split('T')[0];
 
           const mesReferencia = dataVencimentoStr.substring(0, 7); // YYYY-MM
@@ -1697,9 +1705,9 @@ app.post('/api/events/fatura.pagar', async (req: Request, res: Response) => {
         ? `${item.descricao} (${item.parcela_numero}/${item.parcela_total})`
         : item.descricao;
 
-      // Converter data_compra para string se for Date
+      // Converter data_compra para string se for Date (TZ-safe)
       const dataCompraStr = item.data_compra instanceof Date
-        ? item.data_compra.toISOString().split('T')[0]
+        ? toYmd(item.data_compra)
         : String(item.data_compra).split('T')[0];
 
       await client.query(
