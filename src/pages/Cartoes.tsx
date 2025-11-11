@@ -141,12 +141,13 @@ export default function CartoesPage() {
   const currentInvoice = selectedCard ? getCurrentInvoice(selectedCard) : null;
   const currentCompetencia = selectedCard ? formatCompetencia(new Date()) : null;
 
-  // Priorizar busca por fatura_id se existir, senão usar cartao_id + competencia
+  // 🔥 FIX: Buscar TODOS os itens do cartão e filtrar no frontend pela competência atual
+  // Não filtrar por competência no backend, pois pode haver dessincronia entre fatura e competência
   const { items: invoiceItems, loading: loadingItems } = useInvoiceItems(
     currentInvoice?.id,
     selectedCard && !currentInvoice ? {
       cartao_id: selectedCard.id,
-      competencia: `${currentCompetencia}-01` // ✅ CORRIGIDO: Backend espera formato YYYY-MM-DD
+      // ❌ REMOVIDO: competencia (filtramos no frontend)
     } : undefined
   );
 
@@ -185,16 +186,27 @@ export default function CartoesPage() {
     }, 0);
   }, [allCardItems, selectedCard, currentInvoice?.id, currentCompetencia]);
 
-  // Filtrar itens por busca (moved above early returns)
+  // 🔥 FIX: Filtrar itens por competência atual + busca
   const filteredItems = useMemo(() => {
     if (!invoiceItems) return [] as typeof invoiceItems;
-    if (!searchTerm.trim()) return invoiceItems;
+    
+    // 1️⃣ Filtrar por competência atual (se não houver fatura_id definida)
+    let items = invoiceItems;
+    if (!currentInvoice?.id && currentCompetencia) {
+      items = invoiceItems.filter(item => {
+        const comp = formatCompetencia(item.competencia || "");
+        return comp === currentCompetencia;
+      });
+    }
+    
+    // 2️⃣ Aplicar filtro de busca
+    if (!searchTerm.trim()) return items;
     const term = searchTerm.toLowerCase();
-    return invoiceItems.filter(item =>
+    return items.filter(item =>
       item.descricao?.toLowerCase().includes(term) ||
       categories.find(c => c.id === item.categoria_id)?.nome?.toLowerCase().includes(term)
     );
-  }, [invoiceItems, searchTerm, categories]);
+  }, [invoiceItems, searchTerm, categories, currentInvoice?.id, currentCompetencia]);
 
   // Todas as faturas do cartão selecionado, agrupadas por ano
   // ✅ MELHORADO: Ordenação DESC (mais recente primeiro)
@@ -634,15 +646,6 @@ export default function CartoesPage() {
                   </div>
                 ) : (
                   <div className="space-y-4">
-                    {/* 🔥 DEBUG: Log dos itens filtrados */}
-                    {console.log('🔥 Cartoes.tsx - Itens filtrados (Aberta):', filteredItems.slice(0, 3).map(i => ({
-                      descricao: i.descricao,
-                      parcela_numero: i.parcela_numero,
-                      parcela_total: i.parcela_total,
-                      data_compra: i.data_compra,
-                      tipos: { parcela_numero: typeof i.parcela_numero, parcela_total: typeof i.parcela_total }
-                    })))}
-
                     {/* Busca de compras */}
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4 text-muted-foreground" />
