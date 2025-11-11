@@ -642,7 +642,7 @@ export default function CartoesPage() {
                       data_compra: i.data_compra,
                       tipos: { parcela_numero: typeof i.parcela_numero, parcela_total: typeof i.parcela_total }
                     })))}
-                    
+
                     {/* Busca de compras */}
                     <div className="flex items-center gap-2">
                       <Search className="w-4 h-4 text-muted-foreground" />
