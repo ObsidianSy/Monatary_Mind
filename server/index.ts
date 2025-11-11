@@ -1797,6 +1797,51 @@ app.post('/api/events/fatura.pagar', async (req: Request, res: Response) => {
   }
 });
 
+// 🔥 DEBUG: Endpoint para verificar TODAS as parcelas TESS no banco
+app.get("/api/debug/parcelas", async (req, res) => {
+  try {
+    const result = await query(`
+      SELECT 
+        id,
+        descricao,
+        TO_CHAR(data_compra, 'YYYY-MM-DD') as data_compra,
+        TO_CHAR(competencia, 'YYYY-MM-DD') as competencia,
+        parcela_numero,
+        parcela_total,
+        valor,
+        fatura_id,
+        cartao_id,
+        TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at,
+        ativo
+      FROM financeiro.fatura_item
+      WHERE descricao ILIKE '%tess%'
+      ORDER BY created_at DESC, parcela_numero
+    `);
+    
+    const agrupado = result.rows.reduce((acc: any, p: any) => {
+      const key = `${p.descricao}_${p.data_compra}_${p.parcela_total}x`;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(p);
+      return acc;
+    }, {});
+    
+    res.json({
+      total_no_banco: result.rows.length,
+      todas_parcelas: result.rows,
+      agrupado_por_compra: agrupado,
+      diagnostico: {
+        tem_parcela_1: result.rows.some((p: any) => p.parcela_numero === 1),
+        tem_parcela_2: result.rows.some((p: any) => p.parcela_numero === 2),
+        tem_parcela_3: result.rows.some((p: any) => p.parcela_numero === 3),
+        ativas: result.rows.filter((p: any) => p.ativo).length,
+        inativas: result.rows.filter((p: any) => !p.ativo).length
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== INICIAR SERVIDOR ====================
 
 app.listen(PORT, () => {
