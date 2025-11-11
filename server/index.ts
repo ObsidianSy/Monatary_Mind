@@ -1569,7 +1569,9 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
     const direction = orderDir?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
 
     // ✅ FIX: Garantir ordenação numérica de parcela_numero (pode estar como TEXT no banco)
-    queryText += ` ORDER BY fi.${field} ${direction}, CAST(fi.parcela_numero AS INTEGER) ASC`;
+    // Nota: data_compra e competencia agora são aliases TO_CHAR, então ordenamos sem prefixo fi.
+    const orderColumn = (field === 'data_compra' || field === 'competencia') ? field : `fi.${field}`;
+    queryText += ` ORDER BY ${orderColumn} ${direction}, CAST(fi.parcela_numero AS INTEGER) ASC`;
     queryText += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit as string), parseInt(offset as string));
 
