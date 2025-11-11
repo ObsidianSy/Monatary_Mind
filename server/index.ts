@@ -1257,9 +1257,12 @@ app.post('/api/compras', async (req: Request, res: Response) => {
         // Buscar ou criar fatura para a competência
         // ✅ TZ-safe: construir competencia sem depender de toISOString (evita voltar um dia em UTC)
         const competenciaToUse = competencia || (() => {
-          const dc = new Date(data_compra);
+          // Parse yyyy-MM-dd como LOCAL, não UTC (adiciona T00:00 força local time)
+          const [y, m, d] = data_compra.split('-').map(Number);
+          const dc = new Date(y, m - 1, d); // Construir com ano, mês (0-11), dia
           const year = dc.getFullYear();
           const month = String(dc.getMonth() + 1).padStart(2, '0');
+          console.log(`📅 Fallback competencia: data_compra=${data_compra} -> ${year}-${month}-01 (dia=${dc.getDate()})`);
           return `${year}-${month}-01`;
         })();
 
@@ -1350,7 +1353,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
           parcela_numero || 1, parcela_total || 1, competencia, cartao_id, tenant_id]
       );
 
-      console.log(`✅ Fatura_item criado: ID ${result.rows[0].id}, Parcela: ${result.rows[0].parcela_numero}/${result.rows[0].parcela_total}`);
+      console.log(`✅ Fatura_item criado: ID ${result.rows[0].id}, Parcela: ${result.rows[0].parcela_numero}/${result.rows[0].parcela_total}, data_compra=${result.rows[0].data_compra}, competencia=${result.rows[0].competencia}`);
 
       // 3. Atualizar transação "A Pagar" da fatura
       const faturaAtualizada = await client.query(
