@@ -76,7 +76,7 @@ export default function Login() {
               Controle Total.
             </h1>
             <p className="text-lg text-slate-200 drop-shadow">
-              Do planejamento às análises detalhadas, nossa plataforma oferece 
+              Do planejamento às análises detalhadas, nossa plataforma oferece
               as ferramentas que você precisa para gerenciar suas finanças com eficiência.
             </p>
           </div>
@@ -168,13 +168,13 @@ export default function Login() {
             {/* Remember Me */}
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <Checkbox 
-                  id="remember" 
+                <Checkbox
+                  id="remember"
                   checked={rememberMe}
                   onCheckedChange={(checked) => setRememberMe(checked as boolean)}
                 />
-                <Label 
-                  htmlFor="remember" 
+                <Label
+                  htmlFor="remember"
                   className="text-sm text-slate-600 cursor-pointer"
                 >
                   Lembrar-me

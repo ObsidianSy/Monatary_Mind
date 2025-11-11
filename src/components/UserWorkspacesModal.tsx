@@ -149,11 +149,10 @@ export function UserWorkspacesModal({
                         {allWorkspaces.map((workspace) => (
                             <div
                                 key={workspace.id}
-                                className={`flex items-center space-x-4 p-4 rounded-xl border-2 transition-all cursor-pointer ${
-                                    selectedWorkspaces.includes(workspace.id)
+                                className={`flex items-center space-x-4 p-4 rounded-xl border-2 transition-all cursor-pointer ${selectedWorkspaces.includes(workspace.id)
                                         ? 'border-slate-900 bg-slate-50 shadow-sm'
                                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                                }`}
+                                    }`}
                                 onClick={() => toggleWorkspace(workspace.id)}
                             >
                                 <Checkbox
@@ -168,7 +167,7 @@ export function UserWorkspacesModal({
                                 >
                                     <div
                                         className="p-3 rounded-xl shadow-sm"
-                                        style={{ 
+                                        style={{
                                             backgroundColor: `${workspace.cor}15`,
                                             border: `1px solid ${workspace.cor}30`
                                         }}
@@ -193,16 +192,16 @@ export function UserWorkspacesModal({
                 )}
 
                 <DialogFooter className="gap-2">
-                    <Button 
-                        variant="outline" 
-                        onClick={onClose} 
+                    <Button
+                        variant="outline"
+                        onClick={onClose}
                         disabled={saving}
                         className="h-11 px-6"
                     >
                         Cancelar
                     </Button>
-                    <Button 
-                        onClick={handleSave} 
+                    <Button
+                        onClick={handleSave}
                         disabled={saving || loading}
                         className="h-11 px-6 bg-slate-900 hover:bg-slate-800"
                     >
