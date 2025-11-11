@@ -1797,38 +1797,6 @@ app.post('/api/events/fatura.pagar', async (req: Request, res: Response) => {
   }
 });
 
-// ==================== DEBUG ENDPOINT ====================
-
-// 🔥 Endpoint temporário para debug - ver dados brutos do banco
-app.get('/api/debug/parcelas', async (req: Request, res: Response) => {
-  try {
-    const result = await query(`
-      SELECT 
-        id,
-        descricao,
-        TO_CHAR(data_compra, 'YYYY-MM-DD') as data_compra,
-        parcela_numero,
-        parcela_total,
-        TO_CHAR(competencia, 'YYYY-MM-DD') as competencia,
-        is_deleted,
-        TO_CHAR(created_at, 'YYYY-MM-DD HH24:MI:SS') as created_at
-      FROM financeiro.fatura_item
-      WHERE tenant_id = $1
-        AND (descricao ILIKE '%TESS%' OR descricao ILIKE '%test%' OR descricao ILIKE '%tiiy%')
-      ORDER BY created_at DESC, parcela_numero ASC
-      LIMIT 20
-    `, ['obsidian']);
-
-    res.json({
-      total: result.rows.length,
-      items: result.rows
-    });
-  } catch (error: any) {
-    console.error('Erro debug parcelas:', error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
 // ==================== INICIAR SERVIDOR ====================
 
 app.listen(PORT, () => {
