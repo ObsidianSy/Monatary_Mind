@@ -40,17 +40,17 @@ export class FinanceiroSDK {
   }
 
   buildHeaders(extra?: Record<string, string>): Record<string, string> {
-    const h: Record<string, string> = { 
-      "Content-Type": "application/json", 
-      "Accept": "application/json", 
-      ...(extra || {}) 
+    const h: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      ...(extra || {})
     };
     if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
     return h;
   }
 
   withTimeout<T>(promise: Promise<T>): Promise<T> {
-    const t = new Promise<never>((_, rej) => 
+    const t = new Promise<never>((_, rej) =>
       setTimeout(() => {
         const error = new Error("Tempo de requisição excedido");
         (error as any).code = "TIMEOUT";
@@ -61,35 +61,35 @@ export class FinanceiroSDK {
   }
 
   async httpWithRetry(
-    path: string, 
-    init: RequestInit, 
+    path: string,
+    init: RequestInit,
     retries: number = 3
   ): Promise<any> {
     let lastError: Error | null = null;
-    
+
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const url = `${this.baseUrl}${path}`;
         const res = await this.withTimeout(fetch(url, init));
         const text = await res.text();
         const json = text ? safeJson(text) : undefined;
-        
+
         if (!res.ok) {
           const msg = (json && (json.message || json.error || json.detail)) || `HTTP ${res.status} ${res.statusText}`;
           const error = new Error(msg);
           (error as any).status = res.status;
           throw error;
         }
-        
+
         return json ?? {};
       } catch (error: any) {
         lastError = error;
-        
+
         // Não retry em erros 4xx (exceto 408 timeout)
         if (error.status && error.status >= 400 && error.status < 500 && error.status !== 408) {
           throw error;
         }
-        
+
         // Se não é o último retry, aguarda antes de tentar novamente
         if (attempt < retries) {
           const delay = Math.min(1000 * Math.pow(2, attempt - 1), 5000); // Exponential backoff, max 5s
@@ -98,7 +98,7 @@ export class FinanceiroSDK {
         }
       }
     }
-    
+
     // Se chegou aqui, todas as tentativas falharam
     const finalError = new Error(`Todas as ${retries} tentativas falharam. Último erro: ${lastError?.message}`);
     (finalError as any).code = "MAX_RETRIES_EXCEEDED";
@@ -113,8 +113,8 @@ export class FinanceiroSDK {
 
   // --------- POST /events ----------
   async postEvent(
-    eventType: string, 
-    payload: any, 
+    eventType: string,
+    payload: any,
     options?: { eventId?: string; occurredAt?: string }
   ): Promise<any> {
     // Validações
@@ -162,8 +162,8 @@ export class FinanceiroSDK {
 
     // Dispatch global event for auto-refresh
     if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent('finance:data-changed', { 
-        detail: { eventType, payload } 
+      window.dispatchEvent(new CustomEvent('finance:data-changed', {
+        detail: { eventType, payload }
       }));
     }
 
@@ -187,6 +187,8 @@ export class FinanceiroSDK {
       'fatura_item': '/faturas/itens',
       'recorrencia': '/recorrencias',
       'cheque': '/cheques',
+      'fluxo_30d': '/fluxo_30d',
+      'saldo_conta': '/saldo_conta',
     };
 
     const endpoint = resourceMap[resource] || `/${resource}s`;
@@ -218,19 +220,19 @@ export class FinanceiroSDK {
 
     const url = `${endpoint}?${params.toString()}`;
     console.debug("🔍 Buscando:", this.baseUrl + url);
-    
+
     const result = await this.http(url, {
       method: "GET",
       headers: this.buildHeaders(),
     });
-    
+
     console.debug(`✅ ${resource}:`, result?.length || 0, "itens");
     return result;
   }
 
   async *readPaginated(
-    resource: string, 
-    filters: Record<string, any> = {}, 
+    resource: string,
+    filters: Record<string, any> = {},
     pageSize: number = 200
   ): AsyncGenerator<any[], void, unknown> {
     let offset = 0;
@@ -245,7 +247,7 @@ export class FinanceiroSDK {
 
   // ============ Backwards Compatibility Methods ============
   // These methods maintain compatibility with the old API
-  
+
   async getTransactions(filters: Record<string, any> = {}) {
     return this.read("transacao", filters);
   }

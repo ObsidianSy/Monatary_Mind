@@ -566,6 +566,53 @@ app.delete('/api/contas/:id', async (req: Request, res: Response) => {
   }
 });
 
+// ==================== ROTAS DE PROJEÇÃO E SALDO ====================
+
+// Saldo das contas
+app.get('/api/saldo_conta', async (req: Request, res: Response) => {
+  try {
+    const tenant_id = req.query.tenant_id || 'obsidian';
+    const result = await query(
+      `SELECT id, nome, tipo, saldo_inicial, 
+         saldo_inicial as saldo_atual
+       FROM financeiro.conta
+       WHERE tenant_id = $1
+       ORDER BY nome`,
+      [tenant_id]
+    );
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('Erro ao buscar saldo das contas:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Fluxo dos próximos 30 dias
+app.get('/api/fluxo_30d', async (req: Request, res: Response) => {
+  try {
+    const tenant_id = req.query.tenant_id || 'obsidian';
+
+    // Buscar transações futuras (próximos 30 dias)
+    const result = await query(
+      `SELECT 
+         to_char(data_transacao, 'YYYY-MM-DD') as dia,
+         SUM(CASE WHEN tipo = 'credito' THEN valor ELSE 0 END) as entradas,
+         SUM(CASE WHEN tipo = 'debito' THEN valor ELSE 0 END) as saidas
+       FROM financeiro.transacao
+       WHERE tenant_id = $1
+         AND data_transacao >= CURRENT_DATE
+         AND data_transacao < CURRENT_DATE + INTERVAL '30 days'
+       GROUP BY data_transacao
+       ORDER BY data_transacao`,
+      [tenant_id]
+    );
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('Erro ao buscar fluxo de caixa:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== ROTAS DE CATEGORIAS ====================
 
 // Listar todas as categorias com subcategorias

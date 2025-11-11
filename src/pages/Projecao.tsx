@@ -28,7 +28,7 @@ interface FluxoItem {
 const Projecao = () => {
   const [periodo, setPeriodo] = useState("30");
   const [contaFiltro, setContaFiltro] = useState("all");
-  
+
   // Hooks do SDK
   const client = useFinanceiroClient({ tenantId: "obsidian" });
   const { data: fluxoData, loading } = useFinanceiroRead(client, "fluxo_30d", {});
@@ -49,10 +49,10 @@ const Projecao = () => {
     const saidas = Number(item.saidas) || 0;
     const previousBalance = index === 0 ? saldoAtual : (fluxoData[index - 1]?.saldo_previsto ?? saldoAtual);
     const currentBalance = previousBalance + entradas - saidas;
-    
+
     // Update the item with calculated balance (mutable operation)
     item.saldo_previsto = currentBalance;
-    
+
     return {
       data: parseDate(item.dia).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
       saldo: currentBalance,
@@ -74,15 +74,15 @@ const Projecao = () => {
   const getEventoBadge = (tipo: string) => {
     const variants = {
       receita: "default",
-      despesa: "destructive", 
+      despesa: "destructive",
       recorrencia: "default",
       parcela: "secondary"
     } as const;
-    
+
     const labels = {
       receita: "Receita",
       despesa: "Despesa",
-      recorrencia: "Recorrência", 
+      recorrencia: "Recorrência",
       parcela: "Parcela"
     };
 
@@ -105,7 +105,7 @@ const Projecao = () => {
           <h1 className="text-3xl font-bold text-foreground">Projeção de Caixa</h1>
           <p className="text-muted-foreground">Visualize seu fluxo de caixa futuro</p>
         </div>
-        
+
         <div className="flex gap-2">
           <Select value={periodo} onValueChange={setPeriodo}>
             <SelectTrigger className="w-[140px]">
@@ -118,20 +118,20 @@ const Projecao = () => {
               <SelectItem value="90">Próximos 90 dias</SelectItem>
             </SelectContent>
           </Select>
-          
-           <Select value={contaFiltro} onValueChange={setContaFiltro}>
-             <SelectTrigger className="w-[160px]">
-               <SelectValue />
-             </SelectTrigger>
-             <SelectContent>
-               <SelectItem value="all">Todas as contas</SelectItem>
-               {accounts.map((account) => (
-                 <SelectItem key={account.id} value={account.id}>
-                   {account.nome}
-                 </SelectItem>
-               ))}
-             </SelectContent>
-           </Select>
+
+          <Select value={contaFiltro} onValueChange={setContaFiltro}>
+            <SelectTrigger className="w-[160px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Todas as contas</SelectItem>
+              {accounts.map((account) => (
+                <SelectItem key={account.id} value={account.id}>
+                  {account.nome}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -148,7 +148,7 @@ const Projecao = () => {
             </div>
           </CardContent>
         </Card>
-        
+
         <Card>
           <CardContent className="p-6">
             <div className="flex items-center space-x-2">
@@ -194,7 +194,7 @@ const Projecao = () => {
           <TabsTrigger value="grafico">Gráfico</TabsTrigger>
           <TabsTrigger value="timeline">Linha do Tempo</TabsTrigger>
         </TabsList>
-        
+
         <TabsContent value="grafico">
           <Card>
             <CardHeader>
@@ -206,16 +206,16 @@ const Projecao = () => {
                   <LineChart data={chartData}>
                     <CartesianGrid strokeDasharray="3 3" />
                     <XAxis dataKey="data" />
-                    <YAxis 
+                    <YAxis
                       tickFormatter={(value) => `R$ ${(value || 0).toLocaleString('pt-BR')}`}
                     />
-                    <Tooltip 
+                    <Tooltip
                       formatter={(value) => [`R$ ${Number(value || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`, 'Saldo']}
                     />
-                    <Line 
-                      type="monotone" 
-                      dataKey="saldo" 
-                      stroke="hsl(var(--primary))" 
+                    <Line
+                      type="monotone"
+                      dataKey="saldo"
+                      stroke="hsl(var(--primary))"
                       strokeWidth={2}
                       dot={{ fill: "hsl(var(--primary))" }}
                     />
@@ -225,94 +225,94 @@ const Projecao = () => {
             </CardContent>
           </Card>
         </TabsContent>
-        
+
         <TabsContent value="timeline">
           <Card>
             <CardHeader>
               <CardTitle>Eventos por Data</CardTitle>
             </CardHeader>
-             <CardContent>
-               <div className="space-y-6">
-                 {loading ? (
-                   <div className="text-center py-8">
-                     <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
-                     <p>Carregando projeção...</p>
-                   </div>
-                  ) : fluxoData && fluxoData.length > 0 ? (
-                    fluxoData.filter(item => Number(item.entradas) > 0 || Number(item.saidas) > 0).length > 0 ? (
-                      fluxoData.filter(item => Number(item.entradas) > 0 || Number(item.saidas) > 0).map((item, index) => (
-                        <div key={index} className="border-l-2 border-primary pl-4 relative">
-                          <div className="absolute w-3 h-3 bg-primary rounded-full -left-[7px] top-2"></div>
-                          
-                          <div className="pb-4">
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="font-semibold">
-                                {parseDate(item.dia).toLocaleDateString('pt-BR', { 
-                                  weekday: 'long', 
-                                  year: 'numeric', 
-                                  month: 'long', 
-                                  day: 'numeric' 
-                                })}
-                              </h4>
-                              <div className="text-right">
-                                <p className="text-sm text-muted-foreground">Saldo Projetado</p>
-                                <p className="font-bold">R$ {(item.saldo_previsto || saldoAtual).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-                              </div>
-                            </div>
-                            
-                            <div className="space-y-2">
-                              {Number(item.entradas) > 0 && (
-                                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
-                                  <div className="flex items-center space-x-3">
-                                    <TrendingUp className="h-4 w-4 text-success" />
-                                    <div>
-                                      <p className="font-medium">Entradas do dia</p>
-                                      <p className="text-sm text-muted-foreground">Receitas</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <Badge variant="default">Receita</Badge>
-                                    <span className="font-bold text-success">
-                                      +R$ {Number(item.entradas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-                              
-                              {Number(item.saidas) > 0 && (
-                                <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
-                                  <div className="flex items-center space-x-3">
-                                    <TrendingDown className="h-4 w-4 text-destructive" />
-                                    <div>
-                                      <p className="font-medium">Saídas do dia</p>
-                                      <p className="text-sm text-muted-foreground">Despesas</p>
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center space-x-2">
-                                    <Badge variant="destructive">Despesa</Badge>
-                                    <span className="font-bold text-destructive">
-                                      -R$ {Number(item.saidas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
+            <CardContent>
+              <div className="space-y-6">
+                {loading ? (
+                  <div className="text-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4" />
+                    <p>Carregando projeção...</p>
+                  </div>
+                ) : fluxoData && fluxoData.length > 0 ? (
+                  fluxoData.filter(item => Number(item.entradas) > 0 || Number(item.saidas) > 0).length > 0 ? (
+                    fluxoData.filter(item => Number(item.entradas) > 0 || Number(item.saidas) > 0).map((item, index) => (
+                      <div key={index} className="border-l-2 border-primary pl-4 relative">
+                        <div className="absolute w-3 h-3 bg-primary rounded-full -left-[7px] top-2"></div>
+
+                        <div className="pb-4">
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="font-semibold">
+                              {parseDate(item.dia).toLocaleDateString('pt-BR', {
+                                weekday: 'long',
+                                year: 'numeric',
+                                month: 'long',
+                                day: 'numeric'
+                              })}
+                            </h4>
+                            <div className="text-right">
+                              <p className="text-sm text-muted-foreground">Saldo Projetado</p>
+                              <p className="font-bold">R$ {(item.saldo_previsto || saldoAtual).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
                             </div>
                           </div>
+
+                          <div className="space-y-2">
+                            {Number(item.entradas) > 0 && (
+                              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+                                <div className="flex items-center space-x-3">
+                                  <TrendingUp className="h-4 w-4 text-success" />
+                                  <div>
+                                    <p className="font-medium">Entradas do dia</p>
+                                    <p className="text-sm text-muted-foreground">Receitas</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Badge variant="default">Receita</Badge>
+                                  <span className="font-bold text-success">
+                                    +R$ {Number(item.entradas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+
+                            {Number(item.saidas) > 0 && (
+                              <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border">
+                                <div className="flex items-center space-x-3">
+                                  <TrendingDown className="h-4 w-4 text-destructive" />
+                                  <div>
+                                    <p className="font-medium">Saídas do dia</p>
+                                    <p className="text-sm text-muted-foreground">Despesas</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                  <Badge variant="destructive">Despesa</Badge>
+                                  <span className="font-bold text-destructive">
+                                    -R$ {Number(item.saidas).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                  </span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      ))
-                    ) : (
-                      <div className="text-center py-8">
-                        <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                        <p className="text-muted-foreground">Nenhum movimento financeiro encontrado para o período</p>
                       </div>
-                    )
-                 ) : (
-                   <div className="text-center py-8">
-                     <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                     <p className="text-muted-foreground">Nenhum evento encontrado para o período selecionado</p>
-                   </div>
-                 )}
-               </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8">
+                      <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                      <p className="text-muted-foreground">Nenhum movimento financeiro encontrado para o período</p>
+                    </div>
+                  )
+                ) : (
+                  <div className="text-center py-8">
+                    <Calendar className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <p className="text-muted-foreground">Nenhum evento encontrado para o período selecionado</p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

@@ -24,7 +24,9 @@ import {
   CheckCircle2,
   Clock,
   Search,
-  Save
+  Save,
+  Edit,
+  Trash2
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -68,6 +70,14 @@ export default function CartoesPage() {
   const { categories } = useCategories();
   const { toast } = useToast();
   const { isValuesCensored } = usePrivacy();
+  const [isEditInvoiceModalOpen, setIsEditInvoiceModalOpen] = useState(false);
+  const [editInvoiceForm, setEditInvoiceForm] = useState<any>({});
+  const [isDeleteInvoiceModalOpen, setIsDeleteInvoiceModalOpen] = useState(false);
+
+  // Estados para editar/excluir compras individuais
+  const [isEditPurchaseModalOpen, setIsEditPurchaseModalOpen] = useState(false);
+  const [isDeletePurchaseModalOpen, setIsDeletePurchaseModalOpen] = useState(false);
+  const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
 
   // 🆕 Hook para buscar TODAS as compras do cartão (extrato completo)
   const { items: allCardPurchases, loading: loadingAllPurchases } = useInvoiceItems(undefined, {
@@ -429,6 +439,29 @@ export default function CartoesPage() {
 
 
   if (selectedCard) {
+    // Função para deletar a fatura
+    const handleDeleteInvoice = async () => {
+      if (!currentInvoice) return;
+      try {
+        const res = await fetch(`/api/faturas/${currentInvoice.id}`, {
+          method: 'DELETE',
+        });
+        if (!res.ok) throw new Error('Erro ao excluir fatura');
+        toast({
+          title: 'Fatura excluída',
+          description: 'A fatura foi removida com sucesso.',
+        });
+        setIsDeleteInvoiceModalOpen(false);
+        refresh();
+      } catch (err: any) {
+        toast({
+          title: 'Erro ao excluir',
+          description: err.message || 'Não foi possível excluir a fatura.',
+          variant: 'destructive',
+        });
+      }
+    };
+
     return (
       <div className="space-y-6 p-6">
         <div className="flex items-center gap-4">
@@ -627,7 +660,25 @@ export default function CartoesPage() {
                         <Receipt className="w-4 h-4 mr-2" />
                         Fechar Fatura
                       </Button>
+
                     )}
+
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setEditInvoiceForm(currentInvoice);
+                        setIsEditInvoiceModalOpen(true);
+                      }}>
+                      Editar Fatura
+                    </Button>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setIsDeleteInvoiceModalOpen(true)}
+                    >
+                      Excluir Fatura
+                    </Button>
                     {currentInvoice?.status === "fechada" && (
                       <Button
                         size="sm"
@@ -688,6 +739,7 @@ export default function CartoesPage() {
                           <TableHead>Categoria</TableHead>
                           <TableHead>Parcela</TableHead>
                           <TableHead className="text-right">Valor</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
                         </TableRow>
                       </CompactTableHeader>
                       <TableBody>
@@ -711,6 +763,30 @@ export default function CartoesPage() {
                             </TableCell>
                             <TableCell className="text-right font-medium">
                               <ValueDisplay value={typeof item.valor === 'string' ? parseFloat(item.valor) : item.valor} size="sm" />
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex gap-1 justify-end">
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedPurchase(item);
+                                    setIsEditPurchaseModalOpen(true);
+                                  }}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedPurchase(item);
+                                    setIsDeletePurchaseModalOpen(true);
+                                  }}
+                                >
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </div>
                             </TableCell>
                           </CompactTableRow>
                         ))}
@@ -1225,10 +1301,185 @@ export default function CartoesPage() {
           competencia={formatCompetencia(new Date())}
           onSuccess={refresh}
         />
+        {/* Modal de confirmação de exclusão de fatura */}
+        {isDeleteInvoiceModalOpen && currentInvoice && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm">
+              <h2 className="text-lg font-bold mb-2">Excluir Fatura</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Tem certeza que deseja excluir esta fatura? Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => setIsDeleteInvoiceModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" onClick={handleDeleteInvoice}>
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de edição de fatura */}
+        {isEditInvoiceModalOpen && currentInvoice && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm">
+              <h2 className="text-lg font-bold mb-2">Editar Fatura</h2>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm mb-1">Data de Vencimento</label>
+                  <input
+                    type="date"
+                    className="border rounded px-2 py-1 w-full"
+                    value={editInvoiceForm.data_vencimento?.slice(0, 10) || ''}
+                    onChange={e => setEditInvoiceForm(f => ({ ...f, data_vencimento: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1">Status</label>
+                  <select
+                    className="border rounded px-2 py-1 w-full"
+                    value={editInvoiceForm.status || ''}
+                    onChange={e => setEditInvoiceForm(f => ({ ...f, status: e.target.value }))}
+                  >
+                    <option value="aberta">Aberta</option>
+                    <option value="fechada">Fechada</option>
+                    <option value="paga">Paga</option>
+                  </select>
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end mt-4">
+                <Button variant="outline" onClick={() => setIsEditInvoiceModalOpen(false)}>
+                  Cancelar
+                </Button>
+                <Button variant="default" onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/faturas/${currentInvoice.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify(editInvoiceForm),
+                    });
+                    if (!res.ok) throw new Error('Erro ao editar fatura');
+                    toast({ title: 'Fatura atualizada', description: 'Alterações salvas com sucesso.' });
+                    setIsEditInvoiceModalOpen(false);
+                    refresh();
+                  } catch (err: any) {
+                    toast({ title: 'Erro ao editar', description: err.message || 'Não foi possível editar a fatura.', variant: 'destructive' });
+                  }
+                }}>
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de edição de compra */}
+        {isEditPurchaseModalOpen && selectedPurchase && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+              <h2 className="text-lg font-bold mb-4">Editar Compra</h2>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-sm mb-1 font-medium">Descrição</label>
+                  <Input
+                    value={selectedPurchase.descricao}
+                    onChange={e => setSelectedPurchase({ ...selectedPurchase, descricao: e.target.value })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1 font-medium">Valor</label>
+                  <Input
+                    type="number"
+                    step="0.01"
+                    value={typeof selectedPurchase.valor === 'string' ? parseFloat(selectedPurchase.valor) : selectedPurchase.valor}
+                    onChange={e => setSelectedPurchase({ ...selectedPurchase, valor: parseFloat(e.target.value) })}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm mb-1 font-medium">Data da Compra</label>
+                  <Input
+                    type="date"
+                    value={selectedPurchase.data_compra}
+                    onChange={e => setSelectedPurchase({ ...selectedPurchase, data_compra: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end mt-6">
+                <Button variant="outline" onClick={() => {
+                  setIsEditPurchaseModalOpen(false);
+                  setSelectedPurchase(null);
+                }}>
+                  Cancelar
+                </Button>
+                <Button variant="default" onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/faturas/itens/${selectedPurchase.id}`, {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({
+                        descricao: selectedPurchase.descricao,
+                        valor: selectedPurchase.valor,
+                        data_compra: selectedPurchase.data_compra,
+                      }),
+                    });
+                    if (!res.ok) throw new Error('Erro ao editar compra');
+                    toast({ title: 'Compra atualizada', description: 'Alterações salvas com sucesso.' });
+                    setIsEditPurchaseModalOpen(false);
+                    setSelectedPurchase(null);
+                    refresh();
+                  } catch (err: any) {
+                    toast({ title: 'Erro ao editar', description: err.message || 'Não foi possível editar a compra.', variant: 'destructive' });
+                  }
+                }}>
+                  Salvar
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de exclusão de compra */}
+        {isDeletePurchaseModalOpen && selectedPurchase && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+            <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm">
+              <h2 className="text-lg font-bold mb-2">Excluir Compra</h2>
+              <p className="text-sm text-muted-foreground mb-4">
+                Tem certeza que deseja excluir a compra "<strong>{selectedPurchase.descricao}</strong>"? Esta ação não pode ser desfeita.
+              </p>
+              <div className="flex gap-2 justify-end">
+                <Button variant="outline" onClick={() => {
+                  setIsDeletePurchaseModalOpen(false);
+                  setSelectedPurchase(null);
+                }}>
+                  Cancelar
+                </Button>
+                <Button variant="destructive" onClick={async () => {
+                  try {
+                    const res = await fetch(`/api/faturas/itens/${selectedPurchase.id}`, {
+                      method: 'DELETE',
+                    });
+                    if (!res.ok) throw new Error('Erro ao excluir compra');
+                    toast({ title: 'Compra excluída', description: 'A compra foi removida com sucesso.' });
+                    setIsDeletePurchaseModalOpen(false);
+                    setSelectedPurchase(null);
+                    refresh();
+                  } catch (err: any) {
+                    toast({ title: 'Erro ao excluir', description: err.message || 'Não foi possível excluir a compra.', variant: 'destructive' });
+                  }
+                }}>
+                  Excluir
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
 
+  // View principal: grid de cartões
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
