@@ -102,13 +102,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         throw new Error(data.error || 'Erro ao fazer login');
       }
 
-      // Salvar token
+      // Salvar token e limpar workspace anterior
       localStorage.setItem('token', data.token);
+      localStorage.removeItem('currentWorkspaceId'); // Força seleção de workspace
       setUser(data.user);
-      
-      // Redirecionar para dashboard
-      navigate('/');
+
+      console.log('✅ Login bem-sucedido, redirecionando para /workspace');
+
+      // Redirecionar para seleção de workspace
+      navigate('/workspace');
     } catch (error: any) {
+      console.error('❌ Erro no login:', error);
       throw new Error(error.message || 'Erro ao fazer login');
     }
   }
@@ -159,10 +163,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   function hasPermission(recurso: string, acao: string): boolean {
     if (!user) return false;
-    
+
     // SUPER_ADMIN tem acesso total
     if (isSuperAdmin()) return true;
-    
+
     return user.permissions.some(
       p => p.recurso === recurso && p.acao === acao
     );

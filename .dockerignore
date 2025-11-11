@@ -10,6 +10,7 @@ dist
 # Ambiente
 .env
 .env.local
+.env.example
 .env.*.local
 .env.production
 .env.development

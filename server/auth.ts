@@ -33,6 +33,7 @@ export interface UserWithRoles extends User {
     recurso: string;
     acao: string;
   }[];
+  tenantId?: string; // tenant_id do workspace selecionado (vem do token JWT)
 }
 
 export interface AuthRequest extends Request {
@@ -43,6 +44,7 @@ export interface JWTPayload {
   userId: string;
   email: string;
   nome: string;
+  tenantId?: string; // tenant_id do workspace selecionado
 }
 
 // ============================================
@@ -80,41 +82,46 @@ export function authenticateToken(pool: Pool) {
       // Extrair token do header Authorization ou cookie
       const authHeader = req.headers.authorization;
       const cookieToken = req.cookies?.token;
-      
-      const token = authHeader?.startsWith('Bearer ') 
-        ? authHeader.substring(7) 
+
+      const token = authHeader?.startsWith('Bearer ')
+        ? authHeader.substring(7)
         : cookieToken;
 
       if (!token) {
-        return res.status(401).json({ 
-          success: false, 
-          error: 'Token não fornecido' 
+        return res.status(401).json({
+          success: false,
+          error: 'Token não fornecido'
         });
       }
 
       // Verificar token
       const payload = verifyToken(token);
       if (!payload) {
-        return res.status(401).json({ 
-          success: false, 
-          error: 'Token inválido ou expirado' 
+        return res.status(401).json({
+          success: false,
+          error: 'Token inválido ou expirado'
         });
       }
 
       // Buscar usuário completo com roles e permissões
       const user = await getUserWithPermissions(pool, payload.userId);
       if (!user) {
-        return res.status(401).json({ 
-          success: false, 
-          error: 'Usuário não encontrado' 
+        return res.status(401).json({
+          success: false,
+          error: 'Usuário não encontrado'
         });
       }
 
       if (!user.ativo) {
-        return res.status(403).json({ 
-          success: false, 
-          error: 'Usuário desativado' 
+        return res.status(403).json({
+          success: false,
+          error: 'Usuário desativado'
         });
+      }
+
+      // Anexar tenantId do token ao user (se existir)
+      if (payload.tenantId) {
+        user.tenantId = payload.tenantId;
       }
 
       // Anexar usuário à requisição
@@ -122,9 +129,9 @@ export function authenticateToken(pool: Pool) {
       next();
     } catch (error) {
       console.error('Erro na autenticação:', error);
-      res.status(500).json({ 
-        success: false, 
-        error: 'Erro ao autenticar' 
+      res.status(500).json({
+        success: false,
+        error: 'Erro ao autenticar'
       });
     }
   };
@@ -136,9 +143,9 @@ export function authenticateToken(pool: Pool) {
 export function requirePermission(recurso: string, acao: string) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Não autenticado' 
+      return res.status(401).json({
+        success: false,
+        error: 'Não autenticado'
       });
     }
 
@@ -154,8 +161,8 @@ export function requirePermission(recurso: string, acao: string) {
     );
 
     if (!hasPermission) {
-      return res.status(403).json({ 
-        success: false, 
+      return res.status(403).json({
+        success: false,
         error: `Sem permissão para ${acao} ${recurso}`,
         required: { recurso, acao }
       });
@@ -171,17 +178,17 @@ export function requirePermission(recurso: string, acao: string) {
 export function requireRole(minLevel: number) {
   return (req: AuthRequest, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return res.status(401).json({ 
-        success: false, 
-        error: 'Não autenticado' 
+      return res.status(401).json({
+        success: false,
+        error: 'Não autenticado'
       });
     }
 
     const maxUserLevel = Math.max(...req.user.roles.map(r => r.nivel_acesso));
-    
+
     if (maxUserLevel < minLevel) {
-      return res.status(403).json({ 
-        success: false, 
+      return res.status(403).json({
+        success: false,
         error: 'Nível de acesso insuficiente',
         required: minLevel,
         current: maxUserLevel
@@ -209,7 +216,7 @@ export async function getUserWithPermissions(pool: Pool, userId: string): Promis
     'SELECT id, email, nome, ativo, email_verificado, ultimo_acesso, created_at FROM financeiro.usuario WHERE id = $1',
     [userId]
   );
-  
+
   if (userResult.rows.length === 0) {
     return null;
   }
@@ -243,9 +250,9 @@ export async function getUserWithPermissions(pool: Pool, userId: string): Promis
 }
 
 export async function createUser(
-  pool: Pool, 
-  email: string, 
-  password: string, 
+  pool: Pool,
+  email: string,
+  password: string,
   nome: string,
   roleNames: string[] = ['USER']
 ): Promise<User> {
@@ -305,10 +312,10 @@ export async function logAudit(
      (usuario_id, acao, recurso, recurso_id, dados_anteriores, dados_novos, ip_address, user_agent)
      VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
     [
-      userId, 
-      acao, 
-      recurso, 
-      recursoId, 
+      userId,
+      acao,
+      recurso,
+      recursoId,
       dadosAnteriores ? JSON.stringify(dadosAnteriores) : null,
       dadosNovos ? JSON.stringify(dadosNovos) : null,
       ipAddress,

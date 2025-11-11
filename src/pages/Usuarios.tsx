@@ -30,9 +30,10 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Edit, Trash2, Shield, CheckCircle, XCircle, Users } from "lucide-react";
+import { Plus, Edit, Trash2, Shield, CheckCircle, XCircle, Users, Building2 } from "lucide-react";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { UserWorkspacesModal } from "@/components/UserWorkspacesModal";
 
 // ============================================
 // CONFIGURAÇÃO DA API
@@ -63,6 +64,7 @@ export default function Usuarios() {
   const [loading, setLoading] = useState(true);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [isWorkspaceModalOpen, setIsWorkspaceModalOpen] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
@@ -253,6 +255,11 @@ export default function Usuarios() {
     setIsEditModalOpen(true);
   }
 
+  function openWorkspaceModal(user: User) {
+    setSelectedUser(user);
+    setIsWorkspaceModalOpen(true);
+  }
+
   const getRoleBadgeColor = (nivel: number) => {
     if (nivel >= 999) return "bg-purple-500";
     if (nivel >= 100) return "bg-red-500";
@@ -413,6 +420,14 @@ export default function Usuarios() {
                       <Button
                         variant="ghost"
                         size="sm"
+                        onClick={() => openWorkspaceModal(user)}
+                        title="Gerenciar Workspaces"
+                      >
+                        <Building2 className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
                         onClick={() => openEditModal(user)}
                       >
                         <Edit className="h-4 w-4" />
@@ -489,6 +504,22 @@ export default function Usuarios() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Modal de Workspaces */}
+      {selectedUser && (
+        <UserWorkspacesModal
+          userId={selectedUser.id}
+          userName={selectedUser.nome}
+          isOpen={isWorkspaceModalOpen}
+          onClose={() => {
+            setIsWorkspaceModalOpen(false);
+            setSelectedUser(null);
+          }}
+          onSuccess={() => {
+            loadUsers();
+          }}
+        />
+      )}
     </div>
   );
 }

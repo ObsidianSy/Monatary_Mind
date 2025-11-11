@@ -45,7 +45,13 @@ export class FinanceiroSDK {
       "Accept": "application/json",
       ...(extra || {})
     };
-    if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
+
+    // Pega o token do localStorage se não tiver apiKey
+    const token = this.apiKey || localStorage.getItem('token');
+    if (token) {
+      h.Authorization = `Bearer ${token}`;
+    }
+
     return h;
   }
 
@@ -148,16 +154,11 @@ export class FinanceiroSDK {
       throw new Error(`Evento não suportado: ${eventType}`);
     }
 
-    // Adicionar tenant_id ao payload
-    const bodyWithTenant = {
-      ...payload,
-      tenant_id: payload.tenant_id || this.tenantId
-    };
-
+    // tenant_id agora vem do JWT no backend, não precisa mais enviar no payload
     const result = await this.http(mapping.endpoint, {
       method: mapping.method,
       headers: this.buildHeaders(),
-      body: JSON.stringify(bodyWithTenant),
+      body: JSON.stringify(payload),
     });
 
     // Dispatch global event for auto-refresh
@@ -174,8 +175,7 @@ export class FinanceiroSDK {
   async read(resource: string, filters: Record<string, any> = {}): Promise<any[]> {
     const params = new URLSearchParams();
 
-    // tenant fixo
-    params.set("tenant_id", filters.tenant_id || import.meta.env.VITE_FINANCEIRO_TENANT_ID || this.tenantId);
+    // tenant_id agora vem do JWT no backend, não precisa mais enviar como query param
 
     // Mapear recursos para endpoints
     const resourceMap: Record<string, string> = {

@@ -157,6 +157,106 @@ app.post('/api/auth/login', async (req: Request, res: Response) => {
   }
 });
 
+// Buscar workspaces do usuário
+app.get('/api/auth/workspaces', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+
+    const result = await query(
+      `SELECT 
+        w.id,
+        w.tenant_id,
+        w.nome,
+        w.descricao,
+        w.cor,
+        w.icone,
+        uw.padrao AS is_padrao
+      FROM financeiro.workspace w
+      JOIN financeiro.user_workspace uw ON w.id = uw.workspace_id
+      WHERE uw.usuario_id = $1 AND w.ativo = true
+      ORDER BY uw.padrao DESC, w.nome ASC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      workspaces: result.rows
+    });
+  } catch (error: any) {
+    console.error('Erro ao buscar workspaces:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao buscar workspaces'
+    });
+  }
+});
+
+// Selecionar workspace (salvar no token ou sessão)
+app.post('/api/auth/select-workspace', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const userId = req.user?.id;
+    const { workspaceId } = req.body;
+
+    if (!workspaceId) {
+      return res.status(400).json({
+        success: false,
+        error: 'workspaceId é obrigatório'
+      });
+    }
+
+    // Verificar se o usuário tem acesso ao workspace
+    const result = await query(
+      `SELECT 
+        w.id,
+        w.tenant_id,
+        w.nome,
+        w.descricao,
+        w.cor,
+        w.icone
+      FROM financeiro.workspace w
+      JOIN financeiro.user_workspace uw ON w.id = uw.workspace_id
+      WHERE uw.usuario_id = $1 AND w.id = $2 AND w.ativo = true`,
+      [userId, workspaceId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(403).json({
+        success: false,
+        error: 'Você não tem acesso a este workspace'
+      });
+    }
+
+    const workspace = result.rows[0];
+
+    // Gerar novo token com tenant_id incluso
+    const token = generateToken({
+      userId: req.user?.id!,
+      email: req.user?.email!,
+      nome: req.user?.nome!,
+      tenantId: workspace.tenant_id
+    });
+
+    res.cookie('token', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+    });
+
+    res.json({
+      success: true,
+      token,
+      workspace
+    });
+  } catch (error: any) {
+    console.error('Erro ao selecionar workspace:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao selecionar workspace'
+    });
+  }
+});
+
 // Registro de novo usuário
 app.post('/api/auth/register', async (req: Request, res: Response) => {
   try {
@@ -421,6 +521,324 @@ app.post('/api/usuarios/:id/roles', authenticateToken(pool), requirePermission('
   }
 });
 
+// Buscar workspaces de um usuário (apenas ADMIN+)
+app.get('/api/usuarios/:id/workspaces', authenticateToken(pool), requirePermission('usuario', 'read'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      `SELECT 
+        w.id,
+        w.tenant_id,
+        w.nome,
+        w.descricao,
+        w.cor,
+        w.icone,
+        uw.padrao AS is_padrao
+      FROM financeiro.workspace w
+      JOIN financeiro.user_workspace uw ON w.id = uw.workspace_id
+      WHERE uw.usuario_id = $1 AND w.ativo = true
+      ORDER BY uw.padrao DESC, w.nome ASC`,
+      [id]
+    );
+
+    res.json({ success: true, workspaces: result.rows });
+  } catch (error: any) {
+    console.error('Erro ao buscar workspaces do usuário:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Atribuir workspaces a um usuário (apenas ADMIN+)
+app.post('/api/usuarios/:id/workspaces', authenticateToken(pool), requirePermission('usuario', 'update'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { workspaceIds } = req.body;
+
+    if (!Array.isArray(workspaceIds)) {
+      return res.status(400).json({ success: false, error: 'workspaceIds deve ser um array' });
+    }
+
+    // Remover workspaces antigos
+    await query('DELETE FROM financeiro.user_workspace WHERE usuario_id = $1', [id]);
+
+    // Adicionar novos workspaces
+    for (let i = 0; i < workspaceIds.length; i++) {
+      const workspaceId = workspaceIds[i];
+      const isPadrao = i === 0; // Primeiro será o padrão
+
+      await query(
+        'INSERT INTO financeiro.user_workspace (usuario_id, workspace_id, padrao) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING',
+        [id, workspaceId, isPadrao]
+      );
+    }
+
+    // Log de auditoria
+    await logAudit(pool, req.user?.id || null, 'update_workspaces', 'usuario', id, null, { workspaceIds }, req);
+
+    res.json({ success: true, message: 'Workspaces atualizados com sucesso' });
+  } catch (error: any) {
+    console.error('Erro ao atribuir workspaces:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// ==================== ROTAS DE WORKSPACES (ADMIN) ====================
+
+// Listar todos os workspaces (apenas SUPER_ADMIN)
+app.get('/api/workspaces/all', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT * FROM financeiro.workspace ORDER BY nome`
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    console.error('Erro ao buscar workspaces:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Criar novo workspace (apenas SUPER_ADMIN)
+app.post('/api/workspaces', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const { tenant_id, nome, descricao, cor, icone } = req.body;
+
+    if (!tenant_id || !nome) {
+      return res.status(400).json({
+        success: false,
+        error: 'tenant_id e nome são obrigatórios'
+      });
+    }
+
+    // Verificar se tenant_id já existe
+    const existing = await query(
+      'SELECT id FROM financeiro.workspace WHERE tenant_id = $1',
+      [tenant_id]
+    );
+
+    if (existing.rows.length > 0) {
+      return res.status(409).json({
+        success: false,
+        error: 'Já existe um workspace com este tenant_id'
+      });
+    }
+
+    // Criar o workspace
+    const result = await query(
+      `INSERT INTO financeiro.workspace (tenant_id, nome, descricao, cor, icone, ativo)
+       VALUES ($1, $2, $3, $4, $5, true)
+       RETURNING *`,
+      [tenant_id, nome, descricao || null, cor || 'blue', icone || 'briefcase']
+    );
+
+    const newWorkspace = result.rows[0];
+
+    // Adicionar automaticamente o usuário que criou ao workspace
+    if (req.user?.id) {
+      await query(
+        `INSERT INTO financeiro.user_workspace (usuario_id, workspace_id, padrao)
+         VALUES ($1, $2, false)
+         ON CONFLICT (usuario_id, workspace_id) DO NOTHING`,
+        [Number(req.user.id), newWorkspace.id]
+      );
+    }
+
+    res.json({ success: true, data: newWorkspace });
+  } catch (error: any) {
+    console.error('Erro ao criar workspace:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Atualizar workspace (apenas SUPER_ADMIN)
+app.put('/api/workspaces/:id', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { nome, descricao, cor, icone, ativo } = req.body;
+
+    const result = await query(
+      `UPDATE financeiro.workspace
+       SET nome = COALESCE($1, nome),
+           descricao = COALESCE($2, descricao),
+           cor = COALESCE($3, cor),
+           icone = COALESCE($4, icone),
+           ativo = COALESCE($5, ativo),
+           updated_at = NOW()
+       WHERE id = $6
+       RETURNING *`,
+      [nome, descricao, cor, icone, ativo, id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Workspace não encontrado'
+      });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error: any) {
+    console.error('Erro ao atualizar workspace:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Deletar workspace (apenas SUPER_ADMIN)
+app.delete('/api/workspaces/:id', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // Verificar se há usuários atribuídos
+    const users = await query(
+      'SELECT COUNT(*) as count FROM financeiro.user_workspace WHERE workspace_id = $1',
+      [id]
+    );
+
+    if (parseInt(users.rows[0].count) > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Não é possível excluir workspace com usuários atribuídos. Remova os usuários primeiro.'
+      });
+    }
+
+    const result = await query(
+      'DELETE FROM financeiro.workspace WHERE id = $1 RETURNING *',
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Workspace não encontrado'
+      });
+    }
+
+    res.json({ success: true, message: 'Workspace excluído com sucesso' });
+  } catch (error: any) {
+    console.error('Erro ao deletar workspace:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Listar usuários com acesso a um workspace (apenas SUPER_ADMIN)
+app.get('/api/workspaces/:id/users', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    const result = await query(
+      `SELECT 
+        u.id,
+        u.nome,
+        u.email,
+        uw.padrao,
+        uw.created_at as acesso_desde
+      FROM financeiro.usuario u
+      JOIN financeiro.user_workspace uw ON u.id = uw.usuario_id
+      WHERE uw.workspace_id = $1
+      ORDER BY u.nome`,
+      [id]
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    console.error('Erro ao buscar usuários do workspace:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Listar todos os usuários (para adicionar ao workspace)
+app.get('/api/users/all', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT id, nome, email FROM financeiro.usuario ORDER BY nome`
+    );
+
+    res.json({ success: true, data: result.rows });
+  } catch (error: any) {
+    console.error('Erro ao buscar usuários:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Adicionar usuário ao workspace (apenas SUPER_ADMIN)
+app.post('/api/workspaces/:id/users', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { usuario_id, padrao } = req.body;
+
+    if (!usuario_id) {
+      return res.status(400).json({
+        success: false,
+        error: 'usuario_id é obrigatório'
+      });
+    }
+
+    // Verificar se o workspace existe
+    const workspace = await query(
+      'SELECT id FROM financeiro.workspace WHERE id = $1',
+      [id]
+    );
+
+    if (workspace.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Workspace não encontrado'
+      });
+    }
+
+    // Verificar se o usuário existe
+    const user = await query(
+      'SELECT id FROM financeiro.usuario WHERE id = $1',
+      [usuario_id]
+    );
+
+    if (user.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Usuário não encontrado'
+      });
+    }
+
+    // Inserir permissão
+    await query(
+      `INSERT INTO financeiro.user_workspace (usuario_id, workspace_id, padrao)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (usuario_id, workspace_id) DO UPDATE
+       SET padrao = EXCLUDED.padrao`,
+      [usuario_id, id, padrao || false]
+    );
+
+    res.json({ success: true, message: 'Usuário adicionado ao workspace com sucesso' });
+  } catch (error: any) {
+    console.error('Erro ao adicionar usuário ao workspace:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Remover usuário do workspace (apenas SUPER_ADMIN)
+app.delete('/api/workspaces/:id/users/:userId', authenticateToken(pool), requireRole(999), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, userId } = req.params;
+
+    const result = await query(
+      'DELETE FROM financeiro.user_workspace WHERE workspace_id = $1 AND usuario_id = $2 RETURNING *',
+      [id, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        error: 'Permissão não encontrada'
+      });
+    }
+
+    res.json({ success: true, message: 'Usuário removido do workspace com sucesso' });
+  } catch (error: any) {
+    console.error('Erro ao remover usuário do workspace:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 // ==================== ROTAS DE ROLES E PERMISSÕES ====================
 
 // Listar roles
@@ -496,14 +914,17 @@ app.get('/db-test', async (_req: Request, res: Response) => {
 // ==================== ROTAS DE CONTAS ====================
 
 // Listar todas as contas
-app.get('/api/contas', async (req: Request, res: Response) => {
+app.get('/api/contas', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
     const result = await query(
       `SELECT * FROM financeiro.conta 
        WHERE tenant_id = $1
        ORDER BY nome`,
-      [tenant_id]
+      [tenantId]
     );
     res.json(result.rows);
   } catch (error: any) {
@@ -513,9 +934,14 @@ app.get('/api/contas', async (req: Request, res: Response) => {
 });
 
 // Criar ou atualizar conta
-app.post('/api/contas', async (req: Request, res: Response) => {
+app.post('/api/contas', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const { id, nome, tipo, saldo_inicial, tenant_id } = req.body;
+    const { id, nome, tipo, saldo_inicial } = req.body;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     if (!nome || !tipo) {
       return res.status(400).json({ error: 'Nome e tipo são obrigatórios' });
@@ -529,7 +955,7 @@ app.post('/api/contas', async (req: Request, res: Response) => {
          SET nome = $1, tipo = $2, saldo_inicial = $3, updated_at = NOW()
          WHERE id = $4 AND tenant_id = $5
          RETURNING *`,
-        [nome, tipo, saldo_inicial || 0, id, tenant_id || 'obsidian']
+        [nome, tipo, saldo_inicial || 0, id, tenantId]
       );
     } else {
       // Inserir
@@ -537,7 +963,7 @@ app.post('/api/contas', async (req: Request, res: Response) => {
         `INSERT INTO financeiro.conta (nome, tipo, saldo_inicial, tenant_id)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [nome, tipo, saldo_inicial || 0, tenant_id || 'obsidian']
+        [nome, tipo, saldo_inicial || 0, tenantId]
       );
     }
 
@@ -549,14 +975,17 @@ app.post('/api/contas', async (req: Request, res: Response) => {
 });
 
 // Deletar conta
-app.delete('/api/contas/:id', async (req: Request, res: Response) => {
+app.delete('/api/contas/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     await query(
       `DELETE FROM financeiro.conta WHERE id = $1 AND tenant_id = $2`,
-      [id, tenant_id]
+      [id, tenantId]
     );
 
     res.json({ success: true });
@@ -569,16 +998,19 @@ app.delete('/api/contas/:id', async (req: Request, res: Response) => {
 // ==================== ROTAS DE PROJEÇÃO E SALDO ====================
 
 // Saldo das contas
-app.get('/api/saldo_conta', async (req: Request, res: Response) => {
+app.get('/api/saldo_conta', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
     const result = await query(
       `SELECT id, nome, tipo, saldo_inicial, 
          saldo_inicial as saldo_atual
        FROM financeiro.conta
        WHERE tenant_id = $1
        ORDER BY nome`,
-      [tenant_id]
+      [tenantId]
     );
     res.json(result.rows);
   } catch (error: any) {
@@ -588,9 +1020,12 @@ app.get('/api/saldo_conta', async (req: Request, res: Response) => {
 });
 
 // Fluxo dos próximos 30 dias
-app.get('/api/fluxo_30d', async (req: Request, res: Response) => {
+app.get('/api/fluxo_30d', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     // Buscar transações futuras (próximos 30 dias)
     const result = await query(
@@ -604,7 +1039,7 @@ app.get('/api/fluxo_30d', async (req: Request, res: Response) => {
          AND data_transacao < CURRENT_DATE + INTERVAL '30 days'
        GROUP BY data_transacao
        ORDER BY data_transacao`,
-      [tenant_id]
+      [tenantId]
     );
     res.json(result.rows);
   } catch (error: any) {
@@ -616,16 +1051,19 @@ app.get('/api/fluxo_30d', async (req: Request, res: Response) => {
 // ==================== ROTAS DE CATEGORIAS ====================
 
 // Listar todas as categorias com subcategorias
-app.get('/api/categorias', async (req: Request, res: Response) => {
+app.get('/api/categorias', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     // Buscar categorias principais
     const categorias = await query(
       `SELECT * FROM financeiro.categoria 
        WHERE tenant_id = $1 AND parent_id IS NULL
        ORDER BY tipo, nome`,
-      [tenant_id]
+      [tenantId]
     );
 
     // Buscar subcategorias
@@ -633,7 +1071,7 @@ app.get('/api/categorias', async (req: Request, res: Response) => {
       `SELECT * FROM financeiro.categoria 
        WHERE tenant_id = $1 AND parent_id IS NOT NULL
        ORDER BY nome`,
-      [tenant_id]
+      [tenantId]
     );
 
     // Organizar em árvore
@@ -650,9 +1088,14 @@ app.get('/api/categorias', async (req: Request, res: Response) => {
 });
 
 // Criar ou atualizar categoria
-app.post('/api/categorias', async (req: Request, res: Response) => {
+app.post('/api/categorias', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const { id, nome, tipo, parent_id, tenant_id } = req.body;
+    const { id, nome, tipo, parent_id } = req.body;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     if (!nome) {
       return res.status(400).json({ error: 'Nome é obrigatório' });
@@ -671,7 +1114,7 @@ app.post('/api/categorias', async (req: Request, res: Response) => {
          SET nome = $1, tipo = $2, parent_id = $3, updated_at = NOW()
          WHERE id = $4 AND tenant_id = $5
          RETURNING *`,
-        [nome, tipo, parent_id, id, tenant_id || 'obsidian']
+        [nome, tipo, parent_id, id, tenantId]
       );
     } else {
       // Inserir
@@ -679,7 +1122,7 @@ app.post('/api/categorias', async (req: Request, res: Response) => {
         `INSERT INTO financeiro.categoria (nome, tipo, parent_id, tenant_id)
          VALUES ($1, $2, $3, $4)
          RETURNING *`,
-        [nome, tipo, parent_id, tenant_id || 'obsidian']
+        [nome, tipo, parent_id, tenantId]
       );
     }
 
@@ -691,10 +1134,13 @@ app.post('/api/categorias', async (req: Request, res: Response) => {
 });
 
 // Deletar categoria
-app.delete('/api/categorias/:id', async (req: Request, res: Response) => {
+app.delete('/api/categorias/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     // Verificar se tem subcategorias
     const subs = await query(
@@ -710,7 +1156,7 @@ app.delete('/api/categorias/:id', async (req: Request, res: Response) => {
 
     await query(
       `DELETE FROM financeiro.categoria WHERE id = $1 AND tenant_id = $2`,
-      [id, tenant_id]
+      [id, tenantId]
     );
 
     res.json({ success: true });
@@ -723,10 +1169,10 @@ app.delete('/api/categorias/:id', async (req: Request, res: Response) => {
 // ==================== ROTAS DE TRANSAÇÕES ====================
 
 // Listar transações com filtros
-app.get('/api/transacoes', async (req: Request, res: Response) => {
+app.get('/api/transacoes', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const {
-      tenant_id = 'obsidian',
+      tenantId = req.user?.tenantId,
       from,
       to,
       conta_id,
@@ -752,7 +1198,7 @@ app.get('/api/transacoes', async (req: Request, res: Response) => {
       WHERE t.tenant_id = $1
     `;
 
-    const params: any[] = [tenant_id];
+    const params: any[] = [tenantId];
     let paramIndex = 2;
 
     if (from) {
@@ -805,7 +1251,7 @@ app.get('/api/transacoes', async (req: Request, res: Response) => {
 });
 
 // Criar ou atualizar transação
-app.post('/api/transacoes', async (req: Request, res: Response) => {
+app.post('/api/transacoes', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const {
       id,
@@ -819,9 +1265,14 @@ app.post('/api/transacoes', async (req: Request, res: Response) => {
       origem = 'manual',
       status = 'previsto',
       referencia,
-      mes_referencia,
-      tenant_id = 'obsidian'
+      mes_referencia
     } = req.body;
+
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     if (!tipo || !valor || !descricao || !conta_id) {
       return res.status(400).json({
@@ -857,7 +1308,7 @@ app.post('/api/transacoes', async (req: Request, res: Response) => {
          WHERE id = $10 AND tenant_id = $11
          RETURNING *`,
         [tipo, valor, descricao, data_transacao, conta_id,
-          categoria_id, status, referencia, mesRef, id, tenant_id]
+          categoria_id, status, referencia, mesRef, id, tenantId]
       );
     } else {
       // Inserir
@@ -868,7 +1319,7 @@ app.post('/api/transacoes', async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
          RETURNING *`,
         [tipo, valor, descricao, data_transacao, conta_id,
-          categoria_id, origem, status, referencia, mesRef, tenant_id]
+          categoria_id, origem, status, referencia, mesRef, tenantId]
       );
     }
 
@@ -880,11 +1331,16 @@ app.post('/api/transacoes', async (req: Request, res: Response) => {
 });
 
 // Pagar transação (marcar previsto -> liquidado)
-app.post('/api/transacoes/:id/pagar', async (req: Request, res: Response) => {
+app.post('/api/transacoes/:id/pagar', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
   try {
     const { id } = req.params;
-    const { valor_pago, data_pagamento, conta_id, tenant_id = 'obsidian' } = req.body;
+    const { valor_pago, data_pagamento, conta_id } = req.body;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     if (!valor_pago || !data_pagamento || !conta_id) {
       return res.status(400).json({ error: 'valor_pago, data_pagamento e conta_id são obrigatórios' });
@@ -894,7 +1350,7 @@ app.post('/api/transacoes/:id/pagar', async (req: Request, res: Response) => {
 
     const tRes = await client.query(
       `SELECT * FROM financeiro.transacao WHERE id = $1 AND tenant_id = $2`,
-      [id, tenant_id]
+      [id, tenantId]
     );
 
     if (tRes.rows.length === 0) {
@@ -913,7 +1369,7 @@ app.post('/api/transacoes/:id/pagar', async (req: Request, res: Response) => {
        SET status = 'liquidado', valor = $1, data_transacao = $2, conta_id = $3
        WHERE id = $4 AND tenant_id = $5
        RETURNING *`,
-      [valor_pago, data_pagamento, conta_id, id, tenant_id]
+      [valor_pago, data_pagamento, conta_id, id, tenantId]
     );
 
     await client.query('COMMIT');
@@ -932,12 +1388,15 @@ app.post('/api/transacoes/:id/pagar', async (req: Request, res: Response) => {
 app.delete('/api/transacoes/:id', authenticateToken(pool), requirePermission('transacao', 'delete'), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     // Buscar dados anteriores para auditoria
     const oldDataResult = await query(
       `SELECT * FROM financeiro.transacao WHERE id = $1 AND tenant_id = $2`,
-      [id, tenant_id]
+      [id, tenantId]
     );
 
     if (oldDataResult.rows.length === 0) {
@@ -946,7 +1405,7 @@ app.delete('/api/transacoes/:id', authenticateToken(pool), requirePermission('tr
 
     await query(
       `DELETE FROM financeiro.transacao WHERE id = $1 AND tenant_id = $2`,
-      [id, tenant_id]
+      [id, tenantId]
     );
 
     // Log de auditoria
@@ -962,16 +1421,19 @@ app.delete('/api/transacoes/:id', authenticateToken(pool), requirePermission('tr
 // ==================== ROTAS DE CARTÕES ====================
 
 // Listar cartões
-app.get('/api/cartoes', async (req: Request, res: Response) => {
+app.get('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
     const result = await query(
       `SELECT c.*, co.nome as conta_pagamento_nome
        FROM financeiro.cartao c
        LEFT JOIN conta co ON c.conta_pagamento_id = co.id
        WHERE c.tenant_id = $1
        ORDER BY c.apelido`,
-      [tenant_id]
+      [tenantId]
     );
     res.json(result.rows);
   } catch (error: any) {
@@ -981,7 +1443,7 @@ app.get('/api/cartoes', async (req: Request, res: Response) => {
 });
 
 // Criar ou atualizar cartão
-app.post('/api/cartoes', async (req: Request, res: Response) => {
+app.post('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const {
       id,
@@ -992,7 +1454,7 @@ app.post('/api/cartoes', async (req: Request, res: Response) => {
       dia_vencimento,
       conta_pagamento_id,
       ativo = true,
-      tenant_id = 'obsidian'
+      tenantId = req.user?.tenantId
     } = req.body;
 
     if (!apelido || !dia_fechamento || !dia_vencimento) {
@@ -1012,7 +1474,7 @@ app.post('/api/cartoes', async (req: Request, res: Response) => {
          WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [apelido, bandeira, limite_total, dia_fechamento, dia_vencimento,
-          conta_pagamento_id, ativo, id, tenant_id]
+          conta_pagamento_id, ativo, id, tenantId]
       );
     } else {
       // Inserir
@@ -1023,7 +1485,7 @@ app.post('/api/cartoes', async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [apelido, bandeira, limite_total, dia_fechamento, dia_vencimento,
-          conta_pagamento_id, ativo, tenant_id]
+          conta_pagamento_id, ativo, tenantId]
       );
     }
 
@@ -1037,10 +1499,10 @@ app.post('/api/cartoes', async (req: Request, res: Response) => {
 // ==================== ROTAS DE FATURAS ====================
 
 // Listar faturas
-app.get('/api/faturas', async (req: Request, res: Response) => {
+app.get('/api/faturas', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const {
-      tenant_id = 'obsidian',
+      tenantId = req.user?.tenantId,
       cartao_id,
       status,
       limit = '100'
@@ -1053,7 +1515,7 @@ app.get('/api/faturas', async (req: Request, res: Response) => {
       WHERE f.tenant_id = $1
     `;
 
-    const params: any[] = [tenant_id];
+    const params: any[] = [tenantId];
     let paramIndex = 2;
 
     if (cartao_id) {
@@ -1082,9 +1544,12 @@ app.get('/api/faturas', async (req: Request, res: Response) => {
 // ==================== ROTAS DE RECORRÊNCIAS ====================
 
 // Listar recorrências
-app.get('/api/recorrencias', async (req: Request, res: Response) => {
+app.get('/api/recorrencias', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
     const result = await query(
       `SELECT r.*, 
               c.nome as conta_nome,
@@ -1099,7 +1564,7 @@ app.get('/api/recorrencias', async (req: Request, res: Response) => {
        LEFT JOIN categoria parent_cat ON cat.parent_id = parent_cat.id
        WHERE r.tenant_id = $1
        ORDER BY r.descricao`,
-      [tenant_id]
+      [tenantId]
     );
     res.json(result.rows);
   } catch (error: any) {
@@ -1109,7 +1574,7 @@ app.get('/api/recorrencias', async (req: Request, res: Response) => {
 });
 
 // Criar ou atualizar recorrência
-app.post('/api/recorrencias', async (req: Request, res: Response) => {
+app.post('/api/recorrencias', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const {
       id,
@@ -1124,7 +1589,7 @@ app.post('/api/recorrencias', async (req: Request, res: Response) => {
       data_fim,
       is_paused = false,
       alerta_dias_antes,
-      tenant_id = 'obsidian'
+      tenantId = req.user?.tenantId
     } = req.body;
 
     if (!conta_id || !tipo || !valor || !descricao || !frequencia || !data_inicio) {
@@ -1152,7 +1617,7 @@ app.post('/api/recorrencias', async (req: Request, res: Response) => {
          RETURNING *`,
         [conta_id, categoria_id, tipo, valor, descricao,
           frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-          alerta_dias_antes, id, tenant_id]
+          alerta_dias_antes, id, tenantId]
       );
     } else {
       // Inserir
@@ -1160,12 +1625,12 @@ app.post('/api/recorrencias', async (req: Request, res: Response) => {
         `INSERT INTO financeiro.recorrencia 
          (conta_id, categoria_id, tipo, valor, descricao,
           frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-          alerta_dias_antes, tenant_id, proxima_ocorrencia)
+          alerta_dias_antes, tenantId, proxima_ocorrencia)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
         [conta_id, categoria_id, tipo, valor, descricao,
           frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-          alerta_dias_antes, tenant_id, data_inicio]
+          alerta_dias_antes, tenantId, data_inicio]
       );
     }
 
@@ -1177,14 +1642,17 @@ app.post('/api/recorrencias', async (req: Request, res: Response) => {
 });
 
 // Deletar recorrência
-app.delete('/api/recorrencias/:id', async (req: Request, res: Response) => {
+app.delete('/api/recorrencias/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const tenant_id = req.query.tenant_id || 'obsidian';
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     await query(
       `DELETE FROM financeiro.recorrencia WHERE id = $1 AND tenant_id = $2`,
-      [id, tenant_id]
+      [id, tenantId]
     );
 
     res.json({ success: true });
@@ -1197,7 +1665,7 @@ app.delete('/api/recorrencias/:id', async (req: Request, res: Response) => {
 // ==================== ROTAS DE COMPRAS (FATURA_ITEM) ====================
 
 // Criar ou atualizar compra no cartão
-app.post('/api/compras', async (req: Request, res: Response) => {
+app.post('/api/compras', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
 
   try {
@@ -1213,7 +1681,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
       parcela_total,
       competencia,
       observacoes,
-      tenant_id = 'obsidian'
+      tenantId = req.user?.tenantId
     } = req.body;
 
     console.log('🛒 POST /api/compras - Dados recebidos:', {
@@ -1276,7 +1744,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
          FROM financeiro.fatura_item fi
          JOIN financeiro.fatura f ON fi.fatura_id = f.id
          WHERE fi.id = $1 AND fi.tenant_id = $2`,
-        [id, tenant_id]
+        [id, tenantId]
       );
 
       if (itemExistente.rows.length === 0) {
@@ -1307,7 +1775,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
          WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [categoria_id, descricao, valor, data_compra, parcela_numero, parcela_total,
-          competencia, id, tenant_id]
+          competencia, id, tenantId]
       );
     } else {
       // Criar nova compra
@@ -1330,7 +1798,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
         const faturaExistente = await client.query(
           `SELECT id, status FROM financeiro.fatura 
            WHERE cartao_id = $1 AND competencia = $2 AND tenant_id = $3`,
-          [cartao_id, competenciaToUse, tenant_id]
+          [cartao_id, competenciaToUse, tenantId]
         );
 
         if (faturaExistente.rows.length > 0) {
@@ -1347,7 +1815,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
           // Buscar informações do cartão
           const cartaoResult = await client.query(
             `SELECT dia_vencimento FROM financeiro.cartao WHERE id = $1 AND tenant_id = $2`,
-            [cartao_id, tenant_id]
+            [cartao_id, tenantId]
           );
 
           if (cartaoResult.rows.length === 0) {
@@ -1380,7 +1848,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
              VALUES ($1, $2, $3, $4, 0, 'aberta', $5)
              RETURNING id`,
             [cartao_id, competenciaToUse, toYmd(dataVencimento),
-              toYmd(dataFechamento), tenant_id]
+              toYmd(dataFechamento), tenantId]
           ).catch((err) => {
             // Tratar erro de duplicação (UNIQUE constraint)
             if (err.code === '23505') { // duplicate key
@@ -1411,7 +1879,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
         [faturaIdToUse, categoria_id, descricao, valor, data_compra,
-          parcela_numero || 1, parcela_total || 1, competencia, cartao_id, tenant_id]
+          parcela_numero || 1, parcela_total || 1, competencia, cartao_id, tenantId]
       );
 
       console.log(`✅ Fatura_item criado: ID ${result.rows[0].id}, Parcela: ${result.rows[0].parcela_numero}/${result.rows[0].parcela_total}, data_compra=${result.rows[0].data_compra}, competencia=${result.rows[0].competencia}`);
@@ -1444,16 +1912,16 @@ app.post('/api/compras', async (req: Request, res: Response) => {
          AND tipo = 'despesa'
          AND tenant_id = $1
          AND parent_id IS NULL`,
-        [tenant_id]
+        [tenantId]
       );
 
       let categoria_pagamento_id;
       if (categoriaResult.rows.length === 0) {
         const newCatResult = await client.query(
-          `INSERT INTO financeiro.categoria (nome, tipo, tenant_id, parent_id)
+          `INSERT INTO financeiro.categoria (nome, tipo, tenantId, parent_id)
            VALUES ('Pagamento Cartão de Crédito', 'despesa', $1, NULL)
            RETURNING id`,
-          [tenant_id]
+          [tenantId]
         );
         categoria_pagamento_id = newCatResult.rows[0].id;
       } else {
@@ -1470,7 +1938,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
            WHERE tenant_id = $1 
            ORDER BY id ASC 
            LIMIT 1`,
-          [tenant_id]
+          [tenantId]
         );
 
         if (contaResult.rows.length > 0) {
@@ -1513,7 +1981,7 @@ app.post('/api/compras', async (req: Request, res: Response) => {
              VALUES ($1, 'debito', $2, $3, $4, $5, $6, $7, $8, 'previsto', $9)
              RETURNING *`,
             [
-              tenant_id,
+              tenantId,
               valorTotal,
               descricaoTransacao,
               dataVencimentoStr,
@@ -1553,10 +2021,10 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 });
 
 // Listar itens de fatura (compras)
-app.get('/api/faturas/itens', async (req: Request, res: Response) => {
+app.get('/api/faturas/itens', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const {
-      tenant_id = 'obsidian',
+      tenantId = req.user?.tenantId,
       fatura_id,
       cartao_id,
       competencia,
@@ -1591,7 +2059,7 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
       WHERE fi.tenant_id = $1 AND fi.is_deleted = false
     `;
 
-    const params: any[] = [tenant_id];
+    const params: any[] = [tenantId];
     let paramIndex = 2;
 
     if (fatura_id) {
@@ -1652,11 +2120,16 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
 // ==================== EVENTOS DE FATURA ====================
 
 // Evento: Fechar fatura
-app.post('/api/events/fatura.fechar', async (req: Request, res: Response) => {
+app.post('/api/events/fatura.fechar', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
 
   try {
-    const { cartao_id, competencia, tenant_id } = req.body;
+    const { cartao_id, competencia } = req.body;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     if (!cartao_id || !competencia) {
       return res.status(400).json({ error: 'cartao_id e competencia são obrigatórios' });
@@ -1668,7 +2141,7 @@ app.post('/api/events/fatura.fechar', async (req: Request, res: Response) => {
     const faturaResult = await client.query(
       `SELECT * FROM financeiro.fatura 
        WHERE cartao_id = $1 AND competencia = $2 AND tenant_id = $3`,
-      [cartao_id, competencia, tenant_id || 'obsidian']
+      [cartao_id, competencia, tenantId]
     );
 
     if (faturaResult.rows.length === 0) {
@@ -1688,7 +2161,7 @@ app.post('/api/events/fatura.fechar', async (req: Request, res: Response) => {
       `SELECT COALESCE(SUM(valor), 0) as total
        FROM financeiro.fatura_item
        WHERE fatura_id = $1 AND is_deleted = false AND tenant_id = $2`,
-      [fatura.id, tenant_id || 'obsidian']
+      [fatura.id, tenantId]
     );
 
     const valorFechado = parseFloat(totalResult.rows[0].total);
@@ -1729,11 +2202,16 @@ app.post('/api/events/fatura.fechar', async (req: Request, res: Response) => {
 });
 
 // Evento: Pagar fatura (cria transação no ledger)
-app.post('/api/events/fatura.pagar', async (req: Request, res: Response) => {
+app.post('/api/events/fatura.pagar', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
 
   try {
-    const { fatura_id, conta_id, valor_pago, data_pagamento, tenant_id } = req.body;
+    const { fatura_id, conta_id, valor_pago, data_pagamento } = req.body;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
 
     if (!fatura_id || !conta_id || !valor_pago || !data_pagamento) {
       return res.status(400).json({
@@ -1749,7 +2227,7 @@ app.post('/api/events/fatura.pagar', async (req: Request, res: Response) => {
        FROM financeiro.fatura f
        JOIN financeiro.cartao c ON f.cartao_id = c.id
        WHERE f.id = $1 AND f.tenant_id = $2`,
-      [fatura_id, tenant_id || 'obsidian']
+      [fatura_id, tenantId]
     );
 
     if (faturaResult.rows.length === 0) {
@@ -1802,7 +2280,7 @@ app.post('/api/events/fatura.pagar', async (req: Request, res: Response) => {
           origem, referencia, status, mes_referencia)
          VALUES ($1, 'debito', $2, $3, $4, $5, $6, $7, $8, 'liquidado', $9)`,
         [
-          tenant_id || 'obsidian',
+          tenantId,
           item.valor,
           descricaoItem,
           data_pagamento,
@@ -1905,3 +2383,9 @@ process.on('SIGTERM', async () => {
   await pool.end();
   process.exit(0);
 });
+
+
+
+
+
+

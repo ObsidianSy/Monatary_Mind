@@ -45,6 +45,7 @@ import { InvoiceHistoryItem } from "@/components/InvoiceHistoryItem";
 import { InvoiceListItem } from "@/components/InvoiceListItem";
 import { ValueDisplay } from "@/components/ValueDisplay";
 import { StatusBadge } from "@/components/StatusBadge";
+import { CreditCardDisplay } from "@/components/CreditCardDisplay";
 import { CompactTable, CompactTableHeader, CompactTableRow, TableBody, TableCell, TableHead } from "@/components/CompactTable";
 import { TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
@@ -1504,115 +1505,63 @@ export default function CartoesPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {activeCards.map((card) => {
           const usage = getCardUsage(card);
           const limite = typeof card.limite_total === 'string' ? parseFloat(card.limite_total) : card.limite_total;
-          const usagePercentage = getUsagePercentage(usage, limite);
-          const disponivel = limite - usage;
-          const payingAccount = activeAccounts.find(acc => acc.id === card.conta_pagamento_id);
           const currentInvoice = getCurrentInvoice(card);
 
           return (
-            <Card
-              key={card.id}
-              className="cursor-pointer hover:shadow-lg transition-all border-l-4 border-l-primary hover:scale-[1.02]"
-              onClick={() => setSelectedCard(card)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center gap-2">
-                    {getBrandIcon(card.bandeira)}
-                    <div>
-                      <CardTitle className="text-base">{card.apelido}</CardTitle>
-                      <CardDescription className="text-xs capitalize">
-                        {card.bandeira}
-                      </CardDescription>
-                    </div>
-                  </div>
-                  <CircularProgress
-                    value={usage}
-                    max={limite}
-                    size={60}
-                    strokeWidth={6}
-                  />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="space-y-1">
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm text-muted-foreground">Usado</span>
-                    <ValueDisplay value={usage} size="lg" className={`font-bold ${getUsageColor(usagePercentage)}`} />
-                  </div>
-                  <div className="flex justify-between items-baseline">
-                    <span className="text-sm text-muted-foreground">Limite</span>
-                    <ValueDisplay value={limite} size="sm" className="font-medium" />
-                  </div>
-                  <div className="flex justify-between items-baseline pt-1 border-t">
-                    <span className="text-sm text-muted-foreground">Disponível</span>
-                    <StatusBadge
-                      status={usagePercentage >= 90 ? "error" : "success"}
-                      label={formatCurrency(disponivel)}
-                      size="sm"
-                    />
-                  </div>
-                </div>
+            <div key={card.id} className="space-y-3">
+              {/* Cartão de crédito visual */}
+              <CreditCardDisplay
+                card={card}
+                usage={usage}
+                limite={limite}
+                onClick={() => setSelectedCard(card)}
+              />
 
-                <Separator />
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <span className="text-muted-foreground">Fecha dia:</span>
-                    <p className="font-medium">{card.dia_fechamento}</p>
-                  </div>
-                  <div>
-                    <span className="text-muted-foreground">Vence dia:</span>
-                    <p className="font-medium">{card.dia_vencimento}</p>
-                  </div>
-                </div>
-
-                <div className="flex gap-2 pt-2">
+              {/* Ações do cartão */}
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => {
+                    setSelectedCard(card);
+                    setIsAddPurchaseModalOpen(true);
+                  }}
+                >
+                  <ShoppingBag className="w-3 h-3 mr-1" />
+                  Nova Compra
+                </Button>
+                {currentInvoice?.status === "aberta" && (
                   <Button
                     size="sm"
                     variant="outline"
-                    className="flex-1"
-                    onClick={(e) => {
-                      e.stopPropagation();
+                    onClick={() => {
                       setSelectedCard(card);
-                      setIsAddPurchaseModalOpen(true);
+                      setIsInvoiceActionsModalOpen(true);
                     }}
                   >
-                    <ShoppingBag className="w-3 h-3 mr-1" />
-                    Nova Compra
+                    <Receipt className="w-3 h-3 mr-1" />
+                    Fatura
                   </Button>
-                  {currentInvoice?.status === "aberta" && (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedCard(card);
-                        setIsInvoiceActionsModalOpen(true);
-                      }}
-                    >
-                      <Receipt className="w-3 h-3" />
-                    </Button>
-                  )}
-                  {currentInvoice?.status === "fechada" && (
-                    <Button
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setSelectedCard(card);
-                        setIsPayInvoiceModalOpen(true);
-                      }}
-                    >
-                      <DollarSign className="w-3 h-3" />
-                    </Button>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
+                )}
+                {currentInvoice?.status === "fechada" && (
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      setSelectedCard(card);
+                      setIsPayInvoiceModalOpen(true);
+                    }}
+                  >
+                    <DollarSign className="w-3 h-3 mr-1" />
+                    Pagar
+                  </Button>
+                )}
+              </div>
+            </div>
           );
         })}
       </div>

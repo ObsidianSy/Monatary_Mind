@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { 
-  Home, 
-  CreditCard, 
-  Receipt, 
-  Repeat, 
-  Target, 
-  Settings, 
+import {
+  Home,
+  CreditCard,
+  Receipt,
+  Repeat,
+  Target,
+  Settings,
   TrendingUp,
   Bell,
   FileText,
@@ -13,11 +13,13 @@ import {
   Code,
   Wallet,
   Package,
-  Users
+  Users,
+  Building2
 } from "lucide-react";
 import { NavLink, useLocation } from "react-router-dom";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTenant } from "@/contexts/TenantContext";
 
 import {
   Sidebar,
@@ -52,6 +54,7 @@ const advancedMenuItems = [
 // System items
 const systemMenuItems = [
   { title: "Usuários", url: "/usuarios", icon: Users, requirePermission: { recurso: 'usuario', acao: 'read' } },
+  { title: "Workspaces", url: "/workspaces", icon: Building2, requireRole: 999 },
   { title: "Configurações", url: "/configuracoes", icon: Settings },
 ];
 
@@ -60,14 +63,20 @@ export function AppSidebar() {
   const isMobile = useIsMobile();
   const location = useLocation();
   const currentPath = location.pathname;
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
+  const { currentWorkspace } = useTenant();
+
+  // Verificar se usuário tem role mínimo necessário
+  const hasRole = (minLevel: number) => {
+    if (!user?.roles) return false;
+    return user.roles.some(role => role.nivel_acesso >= minLevel);
+  };
 
   const isActive = (path: string) => currentPath === path;
   const getNavCls = ({ isActive }: { isActive: boolean }) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:bg-sidebar-accent ${
-      isActive 
-        ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium" 
-        : "text-sidebar-foreground hover:text-sidebar-accent-foreground"
+    `flex items-center gap-3 rounded-lg px-3 py-2 transition-all hover:bg-sidebar-accent ${isActive
+      ? "bg-sidebar-primary text-sidebar-primary-foreground font-medium"
+      : "text-sidebar-foreground hover:text-sidebar-accent-foreground"
     }`;
 
   if (isMobile) {
@@ -81,10 +90,9 @@ export function AppSidebar() {
                 key={item.title}
                 to={item.url}
                 className={({ isActive }) =>
-                  `flex flex-col items-center gap-1 py-2 px-3 rounded-lg transition-colors ${
-                    isActive
-                      ? "text-primary"
-                      : "text-muted-foreground hover:text-foreground"
+                  `flex flex-col items-center gap-1 py-2 px-3 rounded-lg transition-colors ${isActive
+                    ? "text-primary"
+                    : "text-muted-foreground hover:text-foreground"
                   }`
                 }
               >
@@ -109,8 +117,10 @@ export function AppSidebar() {
             </div>
             {state !== "collapsed" && (
               <div>
-                <h1 className="font-bold text-lg text-sidebar-foreground">Opus One</h1>
-                <p className="text-xs text-sidebar-foreground/70">Ecom Financeiro</p>
+                <h1 className="font-bold text-lg text-sidebar-foreground">
+                  {currentWorkspace?.nome || 'Carregando...'}
+                </h1>
+                <p className="text-xs text-sidebar-foreground/70">Financeiro</p>
               </div>
             )}
           </div>
@@ -156,12 +166,17 @@ export function AppSidebar() {
           <SidebarGroupLabel>Sistema</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {systemMenuItems.map((item) => {
+              {systemMenuItems.map((item: any) => {
                 // Verificar permissão se necessário
                 if (item.requirePermission && !hasPermission(item.requirePermission.recurso, item.requirePermission.acao)) {
                   return null;
                 }
-                
+
+                // Verificar role se necessário
+                if (item.requireRole && !hasRole(item.requireRole)) {
+                  return null;
+                }
+
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton asChild>
