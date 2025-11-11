@@ -1530,7 +1530,6 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
         fi.cartao_id,
         fi.tenant_id,
         fi.created_at,
-        fi.updated_at,
         fi.is_deleted,
         cat.nome AS categoria_nome,
         cat.parent_id AS categoria_parent_id,
@@ -1574,6 +1573,9 @@ app.get('/api/faturas/itens', async (req: Request, res: Response) => {
     queryText += ` ORDER BY ${orderColumn} ${direction}, CAST(fi.parcela_numero AS INTEGER) ASC`;
     queryText += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
     params.push(parseInt(limit as string), parseInt(offset as string));
+
+    console.log('🔍 Query SQL:', queryText);
+    console.log('🔍 Params:', params);
 
     const result = await query(queryText, params);
 
