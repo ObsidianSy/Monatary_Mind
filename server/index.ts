@@ -47,7 +47,7 @@ app.use(cors({
   origin: function (origin, callback) {
     // Permitir requisições sem origin (mobile apps, curl, etc)
     if (!origin) return callback(null, true);
-    
+
     const allowedOrigins = [
       'http://localhost:8080',
       'http://localhost:5173',
