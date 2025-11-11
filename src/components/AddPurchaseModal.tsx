@@ -86,6 +86,14 @@ export default function AddPurchaseModal({
     });
   };
 
+  // ✅ Helper TZ-safe: converte Date para YYYY-MM-DD sem shift de timezone
+  const dateToYmd = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Calcula competência baseada no dia de fechamento (sem dependência de timezone)
   const getCompetencia = (dataCompra: Date, cartaoId: string) => {
     const cartao = activeCards.find(c => c.id === cartaoId);
@@ -190,6 +198,13 @@ export default function AddPurchaseModal({
     const valorTotal = parseFloat(form.valor);
     const valorParcela = form.tipo_compra === "parcelada" ? valorTotal / form.parcela_total : valorTotal;
 
+    console.log('🔍 Enviando compra - Data original:', {
+      data_compra_obj: form.data_compra,
+      data_compra_string: dateToYmd(form.data_compra),
+      timezone_offset: form.data_compra.getTimezoneOffset(),
+      hora_local: form.data_compra.toLocaleString()
+    });
+
     if (form.tipo_compra === "simples") {
       // Compra simples - uma única parcela
       const competencia = getCompetencia(form.data_compra, form.cartao_id);
@@ -200,7 +215,7 @@ export default function AddPurchaseModal({
           competencia,
           descricao: form.descricao,
           valor: valorTotal,
-          data_compra: format(form.data_compra, "yyyy-MM-dd"),
+          data_compra: dateToYmd(form.data_compra),
           categoria_id: form.categoria_id,
           parcela_numero: 1,
           parcela_total: 1
@@ -239,7 +254,7 @@ export default function AddPurchaseModal({
               competencia,
               descricao,
               valor: valorParcela,
-              data_compra: format(form.data_compra, 'yyyy-MM-dd'),
+              data_compra: dateToYmd(form.data_compra),
               categoria_id: form.categoria_id,
               parcela_numero: i + 1,
               parcela_total: form.parcela_total

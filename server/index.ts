@@ -1169,7 +1169,9 @@ app.post('/api/compras', async (req: Request, res: Response) => {
 
     console.log('🛒 POST /api/compras - Dados recebidos:', {
       cartao_id, categoria_id, descricao, valor, data_compra,
-      parcela_numero, parcela_total, competencia
+      parcela_numero, parcela_total, competencia,
+      data_compra_tipo: typeof data_compra,
+      data_compra_parseada: data_compra ? new Date(data_compra) : null
     });
 
     if (!cartao_id || !descricao || !valor || !data_compra) {
