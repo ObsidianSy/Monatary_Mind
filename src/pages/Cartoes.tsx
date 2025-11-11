@@ -139,7 +139,29 @@ export default function CartoesPage() {
   };
   // Hooks derived from current invoice must be declared before any early return
   const currentInvoice = selectedCard ? getCurrentInvoice(selectedCard) : null;
-  const currentCompetencia = selectedCard ? formatCompetencia(new Date()) : null;
+  
+  // 🔥 FIX CRÍTICO: Calcular competência correta baseada na data de fechamento do cartão
+  // Se hoje (10/11) é DEPOIS do dia de fechamento (ex: dia 5), a compra cai no MÊS SEGUINTE
+  const currentCompetencia = useMemo(() => {
+    if (!selectedCard) return null;
+    
+    const hoje = new Date();
+    const diaHoje = hoje.getDate();
+    const mesAtual = hoje.getMonth(); // 0-11
+    const anoAtual = hoje.getFullYear();
+    
+    // Se hoje é DEPOIS do fechamento, a próxima fatura é do mês seguinte
+    let competenciaCalculada: Date;
+    if (diaHoje > selectedCard.dia_fechamento) {
+      // Exemplo: hoje é 10/11, fechamento dia 5 → competência = DEZEMBRO
+      competenciaCalculada = new Date(anoAtual, mesAtual + 1, 1);
+    } else {
+      // Exemplo: hoje é 03/11, fechamento dia 5 → competência = NOVEMBRO
+      competenciaCalculada = new Date(anoAtual, mesAtual, 1);
+    }
+    
+    return formatCompetencia(competenciaCalculada);
+  }, [selectedCard]);
 
   // 🔥 FIX: Buscar TODOS os itens do cartão e filtrar no frontend pela competência atual
   // Não filtrar por competência no backend, pois pode haver dessincronia entre fatura e competência
