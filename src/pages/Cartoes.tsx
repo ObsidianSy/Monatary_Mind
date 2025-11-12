@@ -116,23 +116,23 @@ export default function CartoesPage() {
     (allItemsAllMonths || []).forEach((i) => {
       const v = typeof i.valor === 'string' ? parseFloat(i.valor) : (i.valor || 0);
       if (!i.cartao_id) return;
-      
+
       // ✅ Usar descrição base (sem número de parcela) + data_compra como chave única
       const descricaoBase = i.descricao.replace(/\s*\(\d+\/\d+\)$/, ''); // Remove " (1/3)"
       const chaveUnica = `${i.cartao_id}-${descricaoBase}-${i.data_compra}`;
-      
+
       // Se já processamos esta compra, pular
       if (processedCompras.has(chaveUnica)) {
         return;
       }
-      
+
       // Marcar como processada
       processedCompras.add(chaveUnica);
-      
+
       // Calcular valor total da compra (parcela × total_parcelas)
       const parcelaTotal = i.parcela_total || 1;
       const valorTotalCompra = v * parcelaTotal;
-      
+
       map[i.cartao_id] = (map[i.cartao_id] || 0) + valorTotalCompra;
     });
 
@@ -340,17 +340,17 @@ export default function CartoesPage() {
   // ✅ Calcular valor da próxima fatura (próximo mês) somando itens
   const nextInvoiceValue = useMemo(() => {
     if (!selectedCard) return 0;
-    
+
     const nextMonth = new Date();
     nextMonth.setMonth(nextMonth.getMonth() + 1);
     const nextCompetencia = formatCompetencia(nextMonth);
-    
+
     const nextMonthItems = (allItemsAllMonths || []).filter(i => {
       if (!i.cartao_id || i.cartao_id !== selectedCard.id) return false;
       const comp = formatCompetencia(i.competencia || "");
       return comp === nextCompetencia;
     });
-    
+
     return nextMonthItems.reduce((sum, i) => {
       const v = typeof i.valor === "string" ? parseFloat(i.valor) : i.valor;
       return sum + (v || 0);
@@ -424,10 +424,10 @@ export default function CartoesPage() {
   // Mover todos os cálculos e useMemos para ANTES de qualquer render condicional
   const limite = selectedCard && typeof selectedCard.limite_total === 'string' ?
     parseFloat(selectedCard.limite_total) : (typeof selectedCard?.limite_total === 'number' ? selectedCard.limite_total : 0);
-  
+
   // ✅ CORRIGIDO: Usar getCardUsage() que calcula TODAS as parcelas futuras
   const usage = selectedCard ? getCardUsage(selectedCard) : 0;
-  
+
   const usagePercentage = selectedCard ? getUsagePercentage(usage, limite) : 0;
   const disponivel = Number(limite) - usage;
   const payingAccount = selectedCard ? activeAccounts.find(acc => acc.id === selectedCard.conta_pagamento_id) : null;
