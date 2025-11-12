@@ -24,7 +24,7 @@ interface NewCardModalProps {
 interface CardForm {
   apelido: string;
   bandeira: string;
-  limite: string;
+  limite_total: string;
   dia_fechamento: number;
   dia_vencimento: number;
   conta_pagadora_id: string;
@@ -41,11 +41,11 @@ const bandeiras = [
 
 export default function NewCardModal({ open, onOpenChange, onSuccess }: NewCardModalProps) {
   console.log("NewCardModal renderizado - open:", open);
-  
+
   const [form, setForm] = useState<CardForm>({
     apelido: "",
     bandeira: "",
-    limite: "",
+    limite_total: "",
     dia_fechamento: 15,
     dia_vencimento: 10,
     conta_pagadora_id: "",
@@ -54,7 +54,7 @@ export default function NewCardModal({ open, onOpenChange, onSuccess }: NewCardM
   const { toast } = useToast();
   const client = useFinanceiroClient({ tenantId: "obsidian" });
   const { activeAccounts, loading: accountsLoading } = useAccounts();
-  
+
   // Debug logs
   console.log("Modal state - open:", open, "accountsLoading:", accountsLoading, "activeAccounts:", activeAccounts?.length);
   const { postEvent, posting } = usePostEvent(client, {
@@ -69,7 +69,7 @@ export default function NewCardModal({ open, onOpenChange, onSuccess }: NewCardM
     },
     onError: (error) => {
       toast({
-        title: "Erro ao criar cartão", 
+        title: "Erro ao criar cartão",
         description: error.message || "Ocorreu um erro ao criar o cartão.",
         variant: "destructive",
       });
@@ -80,7 +80,7 @@ export default function NewCardModal({ open, onOpenChange, onSuccess }: NewCardM
     setForm({
       apelido: "",
       bandeira: "",
-      limite: "",
+      limite_total: "",
       dia_fechamento: 15,
       dia_vencimento: 10,
       conta_pagadora_id: "",
@@ -88,18 +88,23 @@ export default function NewCardModal({ open, onOpenChange, onSuccess }: NewCardM
   };
 
   const handleSubmit = async () => {
+    console.log("📝 Iniciando validação do formulário:", form);
+
     const validationData = {
       apelido: form.apelido,
       bandeira: form.bandeira,
-      limite: parseFloat(form.limite.replace(",", ".")),
+      limite_total: parseFloat(form.limite_total.replace(",", ".")),
       dia_fechamento: form.dia_fechamento,
       dia_vencimento: form.dia_vencimento,
       conta_pagadora_id: form.conta_pagadora_id,
     };
 
+    console.log("📝 Dados de validação:", validationData);
+
     const validation = creditCardSchema.safeParse(validationData);
-    
+
     if (!validation.success) {
+      console.error("❌ Erro de validação:", validation.error.errors);
       const firstError = validation.error.errors[0];
       toast({
         title: "Erro de validação",
@@ -109,14 +114,22 @@ export default function NewCardModal({ open, onOpenChange, onSuccess }: NewCardM
       return;
     }
 
+    // Payload para o backend
     const payload = {
-      ...validation.data,
-      ativo: true,
+      apelido: validation.data.apelido,
+      bandeira: validation.data.bandeira,
+      limite_total: validation.data.limite_total,
+      dia_fechamento: validation.data.dia_fechamento,
+      dia_vencimento: validation.data.dia_vencimento,
+      conta_pagamento_id: validation.data.conta_pagadora_id,
     };
+
+    console.log("✅ Payload para o backend:", payload);
 
     try {
       await postEvent("cartao.upsert", payload);
     } catch (error) {
+      console.error("❌ Erro ao criar cartão:", error);
       // Error handled by hook
     }
   };
@@ -168,13 +181,13 @@ export default function NewCardModal({ open, onOpenChange, onSuccess }: NewCardM
           </div>
 
           <div>
-            <Label htmlFor="limite">Limite *</Label>
+            <Label htmlFor="limite_total">Limite *</Label>
             <Input
-              id="limite"
+              id="limite_total"
               type="number"
               step="0.01"
-              value={form.limite}
-              onChange={(e) => updateForm({ limite: e.target.value })}
+              value={form.limite_total}
+              onChange={(e) => updateForm({ limite_total: e.target.value })}
               placeholder="0,00"
             />
           </div>

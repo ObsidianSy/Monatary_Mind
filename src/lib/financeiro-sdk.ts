@@ -137,16 +137,25 @@ export class FinanceiroSDK {
     }
 
     // Mapear eventos para endpoints REST
-    const eventMap: Record<string, { endpoint: string; method: string }> = {
+    const eventMap: Record<string, { endpoint: string; method: string; useId?: boolean }> = {
       'conta.upsert': { endpoint: '/contas', method: 'POST' },
+      'conta.delete': { endpoint: '/contas', method: 'DELETE', useId: true },
       'categoria.upsert': { endpoint: '/categorias', method: 'POST' },
+      'categoria.delete': { endpoint: '/categorias', method: 'DELETE', useId: true },
       'subcategoria.upsert': { endpoint: '/categorias', method: 'POST' },
+      'subcategoria.delete': { endpoint: '/categorias', method: 'DELETE', useId: true },
       'transacao.upsert': { endpoint: '/transacoes', method: 'POST' },
+      'transacao.delete': { endpoint: '/transacoes', method: 'DELETE', useId: true },
       'cartao.upsert': { endpoint: '/cartoes', method: 'POST' },
+      'cartao.delete': { endpoint: '/cartoes', method: 'DELETE', useId: true },
       'recorrencia.upsert': { endpoint: '/recorrencias', method: 'POST' },
+      'recorrencia.delete': { endpoint: '/recorrencias', method: 'DELETE', useId: true },
+      'parcela.upsert': { endpoint: '/parcelas', method: 'POST' },
       'fatura_item.upsert': { endpoint: '/compras', method: 'POST' },
       'fatura.fechar': { endpoint: '/faturas/fechar', method: 'POST' },
       'fatura.pagar': { endpoint: '/faturas/pagar', method: 'POST' },
+      // Nota: Eventos de equipamentos/estoque devem usar seus próprios SDKs (EquipamentosSDK, EstoqueSDK)
+      // não o FinanceiroSDK, pois têm endpoints separados gerenciados por outros módulos
     };
 
     const mapping = eventMap[eventType];
@@ -154,11 +163,16 @@ export class FinanceiroSDK {
       throw new Error(`Evento não suportado: ${eventType}`);
     }
 
+    // Para DELETE, adicionar o ID na URL
+    const endpoint = mapping.useId && payload.id
+      ? `${mapping.endpoint}/${payload.id}`
+      : mapping.endpoint;
+
     // tenant_id agora vem do JWT no backend, não precisa mais enviar no payload
-    const result = await this.http(mapping.endpoint, {
+    const result = await this.http(endpoint, {
       method: mapping.method,
       headers: this.buildHeaders(),
-      body: JSON.stringify(payload),
+      body: mapping.method !== 'DELETE' ? JSON.stringify(payload) : undefined,
     });
 
     // Dispatch global event for auto-refresh

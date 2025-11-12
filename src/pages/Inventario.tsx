@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { Package, Box, Wrench, Plus, Pencil, Trash2, Search, Filter, X } from "lucide-react";
-import { equipamentosSDK } from "@/lib/equipamentos-sdk";
+import EquipamentosSDK from "@/lib/equipamentos-sdk";
 import { estoqueSDK } from "@/lib/estoque-sdk";
 import { Button } from "@/components/ui/button";
 import { usePrivacy } from "@/contexts/PrivacyContext";
+import { useTenant } from "@/contexts/TenantContext";
 import { formatCurrency, censorValue } from "@/lib/utils";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -106,16 +107,31 @@ const statusOptions = [
 
 export default function Inventario() {
   const { isValuesCensored } = usePrivacy();
+  const { currentWorkspace } = useTenant();
+
+  // Debug: Log do workspace atual
+  console.log("🔍 Inventario - Workspace atual:", currentWorkspace);
+
+  // Criar instância do SDK com o tenant correto
+  const equipamentosSDK = useMemo(() => {
+    // ✅ Usar tenant_id ao invés de id
+    const tenantId = currentWorkspace?.tenant_id || "obsidian";
+    console.log("🔧 Criando equipamentosSDK com tenantId:", tenantId);
+    return new EquipamentosSDK({
+      tenantId
+    });
+  }, [currentWorkspace?.tenant_id]); // ✅ Dependência correta
+
   const [activeTab, setActiveTab] = useState("equipamentos");
   const [loading, setLoading] = useState(true);
-  
+
   // Filtros
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState("todos");
   const [categoriaFilter, setCategoriaFilter] = useState("todos");
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
-  
+
   // Equipamentos State
   const [equipamentos, setEquipamentos] = useState<Equipamento[]>([]);
   const [equipamentoModalOpen, setEquipamentoModalOpen] = useState(false);
@@ -190,17 +206,21 @@ export default function Inventario() {
     lote: "",
   });
 
-  // Carregar equipamentos ao montar o componente
+  // Carregar equipamentos ao montar o componente e quando o workspace mudar
   useEffect(() => {
+    console.log("📦 useEffect disparado - carregando dados para workspace:", currentWorkspace?.tenant_id);
     loadEquipamentos();
     loadProdutos();
-  }, []);
+  }, [currentWorkspace?.tenant_id, equipamentosSDK]); // ✅ Usar tenant_id
 
   const loadEquipamentos = async () => {
     try {
       setLoading(true);
+      console.log("📡 Buscando equipamentos com SDK tenant:", equipamentosSDK);
       const data = await equipamentosSDK.getEquipamentos();
-      
+
+      console.log("📥 Equipamentos recebidos:", data);
+
       // Converter do formato da API para o formato do frontend
       const equipamentosFormatados = data.map((eq: any) => ({
         id: eq.id,
@@ -213,7 +233,8 @@ export default function Inventario() {
         dataAquisicao: eq.data_aquisicao || new Date().toISOString().split('T')[0],
         status: eq.status || "ativo",
       }));
-      
+
+      console.log("✅ Equipamentos formatados:", equipamentosFormatados);
       setEquipamentos(equipamentosFormatados);
     } catch (error) {
       console.error("Erro ao carregar equipamentos:", error);
@@ -226,7 +247,14 @@ export default function Inventario() {
   const loadProdutos = async () => {
     try {
       const data = await estoqueSDK.getProdutos({ only_active: true, include_kits: true });
-      
+
+      // Verificar se data é um array
+      if (!Array.isArray(data)) {
+        console.warn("getProdutos não retornou um array:", data);
+        setProdutos([]);
+        return;
+      }
+
       // Converter do formato da API para o formato do frontend
       const produtosFormatados = data.map((prod: any) => ({
         id: prod.id,
@@ -239,11 +267,12 @@ export default function Inventario() {
         estoqueMinimo: prod.estoque_minimo || 0,
         localizacao: prod.variante || "",
       }));
-      
+
       setProdutos(produtosFormatados);
     } catch (error) {
       console.error("Erro ao carregar produtos:", error);
-      toast.error("Erro ao carregar produtos do estoque");
+      setProdutos([]);
+      // Não mostrar erro toast pois o endpoint pode não existir
     }
   };
 
@@ -264,12 +293,12 @@ export default function Inventario() {
 
   const handleEquipamentoSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     try {
       // Converter data para formato dd/mm/yyyy
       const [year, month, day] = equipamentoForm.dataAquisicao.split('-');
       const dataFormatada = `${day}/${month}/${year}`;
-      
+
       const payload = {
         id: editingEquipamento?.id || null,
         nome: equipamentoForm.nome,
@@ -289,7 +318,7 @@ export default function Inventario() {
         await equipamentosSDK.createEquipamento(payload);
         toast.success("Equipamento cadastrado com sucesso!");
       }
-      
+
       setEquipamentoModalOpen(false);
       resetEquipamentoForm();
       await loadEquipamentos();
@@ -342,17 +371,17 @@ export default function Inventario() {
 
   const handleProdutoSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (editingProduto) {
-      setProdutos(produtos.map(p => 
-        p.id === editingProduto.id 
-          ? { 
-              ...produtoForm, 
-              id: p.id, 
-              quantidade: parseFloat(produtoForm.quantidade),
-              valorUnitario: parseFloat(produtoForm.valorUnitario),
-              estoqueMinimo: parseFloat(produtoForm.estoqueMinimo),
-            }
+      setProdutos(produtos.map(p =>
+        p.id === editingProduto.id
+          ? {
+            ...produtoForm,
+            id: p.id,
+            quantidade: parseFloat(produtoForm.quantidade),
+            valorUnitario: parseFloat(produtoForm.valorUnitario),
+            estoqueMinimo: parseFloat(produtoForm.estoqueMinimo),
+          }
           : p
       ));
       toast.success("Produto atualizado com sucesso!");
@@ -367,7 +396,7 @@ export default function Inventario() {
       setProdutos([...produtos, novoProduto]);
       toast.success("Produto cadastrado com sucesso!");
     }
-    
+
     setProdutoModalOpen(false);
     resetProdutoForm();
   };
@@ -410,19 +439,19 @@ export default function Inventario() {
 
   const handleMateriaPrimaSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (editingMateriaPrima) {
-      setMateriasPrimas(materiasPrimas.map(mp => 
-        mp.id === editingMateriaPrima.id 
-          ? { 
-              ...materiaPrimaForm, 
-              id: mp.id, 
-              quantidade: parseFloat(materiaPrimaForm.quantidade),
-              valorUnitario: parseFloat(materiaPrimaForm.valorUnitario),
-              estoqueMinimo: parseFloat(materiaPrimaForm.estoqueMinimo),
-              dataValidade: materiaPrimaForm.dataValidade || undefined,
-              lote: materiaPrimaForm.lote || undefined,
-            }
+      setMateriasPrimas(materiasPrimas.map(mp =>
+        mp.id === editingMateriaPrima.id
+          ? {
+            ...materiaPrimaForm,
+            id: mp.id,
+            quantidade: parseFloat(materiaPrimaForm.quantidade),
+            valorUnitario: parseFloat(materiaPrimaForm.valorUnitario),
+            estoqueMinimo: parseFloat(materiaPrimaForm.estoqueMinimo),
+            dataValidade: materiaPrimaForm.dataValidade || undefined,
+            lote: materiaPrimaForm.lote || undefined,
+          }
           : mp
       ));
       toast.success("Matéria-prima atualizada com sucesso!");
@@ -439,7 +468,7 @@ export default function Inventario() {
       setMateriasPrimas([...materiasPrimas, novaMateriaPrima]);
       toast.success("Matéria-prima cadastrada com sucesso!");
     }
-    
+
     setMateriaPrimaModalOpen(false);
     resetMateriaPrimaForm();
   };
@@ -468,24 +497,24 @@ export default function Inventario() {
   // Filtrar dados
   const filteredEquipamentos = equipamentos.filter(eq => {
     const matchSearch = eq.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        eq.marca.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        eq.modelo.toLowerCase().includes(searchQuery.toLowerCase());
+      eq.marca.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      eq.modelo.toLowerCase().includes(searchQuery.toLowerCase());
     const matchStatus = statusFilter === "todos" || eq.status === statusFilter;
     const matchData = (!dataInicio || new Date(eq.dataAquisicao) >= new Date(dataInicio)) &&
-                      (!dataFim || new Date(eq.dataAquisicao) <= new Date(dataFim));
+      (!dataFim || new Date(eq.dataAquisicao) <= new Date(dataFim));
     return matchSearch && matchStatus && matchData;
   });
 
   const filteredProdutos = produtos.filter(p => {
     const matchSearch = p.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        p.codigo.toLowerCase().includes(searchQuery.toLowerCase());
+      p.codigo.toLowerCase().includes(searchQuery.toLowerCase());
     const matchCategoria = categoriaFilter === "todos" || p.categoria === categoriaFilter;
     return matchSearch && matchCategoria;
   });
 
   const filteredMateriasPrimas = materiasPrimas.filter(mp => {
     const matchSearch = mp.nome.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                        mp.codigo.toLowerCase().includes(searchQuery.toLowerCase());
+      mp.codigo.toLowerCase().includes(searchQuery.toLowerCase());
     return matchSearch;
   });
 
@@ -636,7 +665,7 @@ export default function Inventario() {
                       Preencha os dados do equipamento
                     </DialogDescription>
                   </DialogHeader>
-                  
+
                   <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -648,14 +677,14 @@ export default function Inventario() {
                           required
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="tipo">Tipo *</Label>
                         <Select value={equipamentoForm.tipo} onValueChange={(value) => setEquipamentoForm({ ...equipamentoForm, tipo: value })}>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecione o tipo" />
                           </SelectTrigger>
-                           <SelectContent>
+                          <SelectContent>
                             {tiposEquipamento.map(tipo => (
                               <SelectItem key={tipo} value={tipo}>
                                 {tipo.charAt(0).toUpperCase() + tipo.slice(1)}
@@ -676,7 +705,7 @@ export default function Inventario() {
                           required
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="modelo">Modelo *</Label>
                         <Input
@@ -697,7 +726,7 @@ export default function Inventario() {
                           onChange={(e) => setEquipamentoForm({ ...equipamentoForm, numeroSerie: e.target.value })}
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="valor">Valor (R$) *</Label>
                         <Input
@@ -722,7 +751,7 @@ export default function Inventario() {
                           required
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="status">Status *</Label>
                         <Select value={equipamentoForm.status} onValueChange={(value: any) => setEquipamentoForm({ ...equipamentoForm, status: value })}>
@@ -759,7 +788,7 @@ export default function Inventario() {
                 <div className="text-2xl font-bold">{equipamentos.length}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Equipamentos Ativos</CardTitle>
@@ -769,7 +798,7 @@ export default function Inventario() {
                 <div className="text-2xl font-bold">{equipamentosAtivos}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
@@ -798,7 +827,7 @@ export default function Inventario() {
                   <Wrench className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>Nenhum equipamento encontrado.</p>
                   <p className="text-sm">
-                    {equipamentos.length === 0 
+                    {equipamentos.length === 0
                       ? 'Clique em "Novo Equipamento" para começar.'
                       : 'Tente ajustar os filtros de busca.'}
                   </p>
@@ -831,7 +860,7 @@ export default function Inventario() {
                         <TableCell>
                           <Badge variant={
                             equipamento.status === "ativo" ? "default" :
-                            equipamento.status === "manutencao" ? "secondary" : "outline"
+                              equipamento.status === "manutencao" ? "secondary" : "outline"
                           } className="text-xs">
                             {statusOptions.find(s => s.value === equipamento.status)?.label}
                           </Badge>
@@ -886,7 +915,7 @@ export default function Inventario() {
                       Preencha os dados do produto
                     </DialogDescription>
                   </DialogHeader>
-                  
+
                   <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -898,7 +927,7 @@ export default function Inventario() {
                           required
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="prod-codigo">Código *</Label>
                         <Input
@@ -924,7 +953,7 @@ export default function Inventario() {
                           </SelectContent>
                         </Select>
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="prod-localizacao">Localização *</Label>
                         <Input
@@ -949,7 +978,7 @@ export default function Inventario() {
                           required
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="prod-unidade">Unidade *</Label>
                         <Select value={produtoForm.unidade} onValueChange={(value) => setProdutoForm({ ...produtoForm, unidade: value })}>
@@ -1010,7 +1039,7 @@ export default function Inventario() {
                 <div className="text-2xl font-bold">{produtos.length}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Alertas Estoque Baixo</CardTitle>
@@ -1020,7 +1049,7 @@ export default function Inventario() {
                 <div className="text-2xl font-bold text-destructive">{produtosBaixoEstoque}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
@@ -1045,7 +1074,7 @@ export default function Inventario() {
                   <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>Nenhum produto encontrado.</p>
                   <p className="text-sm">
-                    {produtos.length === 0 
+                    {produtos.length === 0
                       ? 'Clique em "Novo Produto" para começar.'
                       : 'Tente ajustar os filtros de busca.'}
                   </p>
@@ -1138,7 +1167,7 @@ export default function Inventario() {
                       Preencha os dados da matéria-prima
                     </DialogDescription>
                   </DialogHeader>
-                  
+
                   <div className="grid gap-4 py-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
@@ -1150,7 +1179,7 @@ export default function Inventario() {
                           required
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="mp-codigo">Código *</Label>
                         <Input
@@ -1184,7 +1213,7 @@ export default function Inventario() {
                           required
                         />
                       </div>
-                      
+
                       <div className="space-y-2">
                         <Label htmlFor="mp-unidade">Unidade *</Label>
                         <Select value={materiaPrimaForm.unidade} onValueChange={(value) => setMateriaPrimaForm({ ...materiaPrimaForm, unidade: value })}>
@@ -1266,7 +1295,7 @@ export default function Inventario() {
                 <div className="text-2xl font-bold">{materiasPrimas.length}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Alertas Estoque Baixo</CardTitle>
@@ -1276,7 +1305,7 @@ export default function Inventario() {
                 <div className="text-2xl font-bold text-destructive">{materiasPrimasBaixoEstoque}</div>
               </CardContent>
             </Card>
-            
+
             <Card>
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">Valor Total</CardTitle>
@@ -1301,7 +1330,7 @@ export default function Inventario() {
                   <Box className="h-12 w-12 mx-auto mb-4 opacity-50" />
                   <p>Nenhuma matéria-prima encontrada.</p>
                   <p className="text-sm">
-                    {materiasPrimas.length === 0 
+                    {materiasPrimas.length === 0
                       ? 'Clique em "Nova Matéria-Prima" para começar.'
                       : 'Tente ajustar os filtros de busca.'}
                   </p>

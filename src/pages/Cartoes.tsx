@@ -65,7 +65,7 @@ export default function CartoesPage() {
   const [editForm, setEditForm] = useState<Partial<CreditCard>>({});
   const [extractPeriodFilter, setExtractPeriodFilter] = useState<string>("all"); // all, 3m, 6m, 12m, year
 
-  const { activeCards, loading, refresh, updateCard } = useCreditCards();
+  const { activeCards, loading, refresh, updateCard, deleteCard } = useCreditCards();
   const { invoices } = useInvoices(selectedCard?.id);
   const { activeAccounts } = useAccounts();
   const { categories } = useCategories();
@@ -79,6 +79,10 @@ export default function CartoesPage() {
   const [isEditPurchaseModalOpen, setIsEditPurchaseModalOpen] = useState(false);
   const [isDeletePurchaseModalOpen, setIsDeletePurchaseModalOpen] = useState(false);
   const [selectedPurchase, setSelectedPurchase] = useState<any>(null);
+
+  // Estados para excluir cartão
+  const [isDeleteCardModalOpen, setIsDeleteCardModalOpen] = useState(false);
+  const [cardToDelete, setCardToDelete] = useState<CreditCard | null>(null);
 
   // 🆕 Hook para buscar TODAS as compras do cartão (extrato completo)
   const { items: allCardPurchases, loading: loadingAllPurchases } = useInvoiceItems(undefined, {
@@ -434,6 +438,28 @@ export default function CartoesPage() {
         title: "Erro ao atualizar",
         description: error.message || "Não foi possível salvar as alterações.",
         variant: "destructive",
+      });
+    }
+  };
+
+
+  // Função para deletar o cartão
+  const handleDeleteCard = async () => {
+    if (!cardToDelete) return;
+    try {
+      await deleteCard(cardToDelete.id);
+      toast({
+        title: 'Cartão excluído',
+        description: 'O cartão foi removido com sucesso.',
+      });
+      setIsDeleteCardModalOpen(false);
+      setCardToDelete(null);
+      refresh();
+    } catch (err: any) {
+      toast({
+        title: 'Erro ao excluir',
+        description: err.message || 'Não foi possível excluir o cartão.',
+        variant: 'destructive',
       });
     }
   };
@@ -1560,6 +1586,16 @@ export default function CartoesPage() {
                     Pagar
                   </Button>
                 )}
+                <Button
+                  size="sm"
+                  variant="destructive"
+                  onClick={() => {
+                    setCardToDelete(card);
+                    setIsDeleteCardModalOpen(true);
+                  }}
+                >
+                  <Trash2 className="w-3 h-3" />
+                </Button>
               </div>
             </div>
           );
@@ -1609,6 +1645,30 @@ export default function CartoesPage() {
         competencia={formatCompetencia(new Date())}
         onSuccess={refresh}
       />
+
+      {/* Modal de confirmação de exclusão de cartão */}
+      {isDeleteCardModalOpen && cardToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6 w-full max-w-sm">
+            <h2 className="text-lg font-bold mb-2">Excluir Cartão</h2>
+            <p className="text-sm text-muted-foreground mb-4">
+              Tem certeza que deseja excluir o cartão "<strong>{cardToDelete.apelido}</strong>"?
+              Todas as faturas e compras associadas serão mantidas para fins de histórico, mas o cartão não estará mais disponível.
+            </p>
+            <div className="flex gap-2 justify-end">
+              <Button variant="outline" onClick={() => {
+                setIsDeleteCardModalOpen(false);
+                setCardToDelete(null);
+              }}>
+                Cancelar
+              </Button>
+              <Button variant="destructive" onClick={handleDeleteCard}>
+                Excluir
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

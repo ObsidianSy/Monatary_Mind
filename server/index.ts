@@ -974,7 +974,7 @@ app.post('/api/contas', authenticateToken(pool), async (req: AuthRequest, res: R
       // Atualizar
       result = await query(
         `UPDATE financeiro.conta 
-         SET nome = $1, tipo = $2, saldo_inicial = $3, updated_at = NOW()
+         SET nome = $1, tipo = $2, saldo_inicial = $3
          WHERE id = $4 AND tenant_id = $5
          RETURNING *`,
         [nome, tipo, saldo_inicial || 0, id, tenantId]
@@ -1112,8 +1112,10 @@ app.get('/api/categorias', authenticateToken(pool), async (req: AuthRequest, res
 // Criar ou atualizar categoria
 app.post('/api/categorias', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
-    const { id, nome, tipo, parent_id } = req.body;
+    let { id, nome, tipo, parent_id } = req.body;
     const tenantId = req.user?.tenantId;
+
+    console.log('📝 POST /api/categorias - Dados recebidos:', { id, nome, tipo, parent_id, tenantId });
 
     if (!tenantId) {
       return res.status(400).json({ error: 'Selecione um workspace primeiro' });
@@ -1121,6 +1123,21 @@ app.post('/api/categorias', authenticateToken(pool), async (req: AuthRequest, re
 
     if (!nome) {
       return res.status(400).json({ error: 'Nome é obrigatório' });
+    }
+
+    // Se tem parent_id, buscar o tipo da categoria pai
+    if (parent_id && !tipo) {
+      const parentResult = await query(
+        `SELECT tipo FROM financeiro.categoria WHERE id = $1 AND tenant_id = $2`,
+        [parent_id, tenantId]
+      );
+
+      if (parentResult.rows.length === 0) {
+        return res.status(400).json({ error: 'Categoria pai não encontrada' });
+      }
+
+      tipo = parentResult.rows[0].tipo;
+      console.log('🔗 Subcategoria herda tipo da categoria pai:', tipo);
     }
 
     // Se não tem parent_id, tipo é obrigatório
@@ -1131,15 +1148,17 @@ app.post('/api/categorias', authenticateToken(pool), async (req: AuthRequest, re
     let result;
     if (id) {
       // Atualizar
+      console.log('🔄 Atualizando categoria:', { id, nome, tipo, parent_id, tenantId });
       result = await query(
         `UPDATE financeiro.categoria 
-         SET nome = $1, tipo = $2, parent_id = $3, updated_at = NOW()
+         SET nome = $1, tipo = $2, parent_id = $3
          WHERE id = $4 AND tenant_id = $5
          RETURNING *`,
         [nome, tipo, parent_id, id, tenantId]
       );
     } else {
       // Inserir
+      console.log('➕ Inserindo nova categoria:', { nome, tipo, parent_id, tenantId });
       result = await query(
         `INSERT INTO financeiro.categoria (nome, tipo, parent_id, tenant_id)
          VALUES ($1, $2, $3, $4)
@@ -1148,9 +1167,10 @@ app.post('/api/categorias', authenticateToken(pool), async (req: AuthRequest, re
       );
     }
 
+    console.log('✅ Categoria salva com sucesso:', result.rows[0]);
     res.json(result.rows[0]);
   } catch (error: any) {
-    console.error('Erro ao salvar categoria:', error);
+    console.error('❌ Erro ao salvar categoria:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1160,15 +1180,20 @@ app.delete('/api/categorias/:id', authenticateToken(pool), async (req: AuthReque
   try {
     const { id } = req.params;
     const tenantId = req.user?.tenantId;
+
+    console.log('🗑️ DELETE /api/categorias - Deletando categoria:', { id, tenantId });
+
     if (!tenantId) {
       return res.status(400).json({ error: 'Selecione um workspace primeiro' });
     }
 
     // Verificar se tem subcategorias
     const subs = await query(
-      `SELECT COUNT(*) as count FROM financeiro.categoria WHERE parent_id = $1`,
-      [id]
+      `SELECT COUNT(*) as count FROM financeiro.categoria WHERE parent_id = $1 AND tenant_id = $2`,
+      [id, tenantId]
     );
+
+    console.log('🔍 Subcategorias encontradas:', subs.rows[0].count);
 
     if (parseInt(subs.rows[0].count) > 0) {
       return res.status(400).json({
@@ -1176,14 +1201,15 @@ app.delete('/api/categorias/:id', authenticateToken(pool), async (req: AuthReque
       });
     }
 
-    await query(
-      `DELETE FROM financeiro.categoria WHERE id = $1 AND tenant_id = $2`,
+    const result = await query(
+      `DELETE FROM financeiro.categoria WHERE id = $1 AND tenant_id = $2 RETURNING *`,
       [id, tenantId]
     );
 
+    console.log('✅ Categoria deletada:', result.rows[0]);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Erro ao deletar categoria:', error);
+    console.error('❌ Erro ao deletar categoria:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1475,11 +1501,12 @@ app.post('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: 
       dia_fechamento,
       dia_vencimento,
       conta_pagamento_id,
-      ativo = true,
+      is_deleted = false,
       tenantId = req.user?.tenantId
     } = req.body;
 
-    if (!apelido || !dia_fechamento || !dia_vencimento) {
+    // Validação: campos obrigatórios apenas para INSERT
+    if (!id && (!apelido || !dia_fechamento || !dia_vencimento)) {
       return res.status(400).json({
         error: 'Apelido, dia de fechamento e vencimento são obrigatórios'
       });
@@ -1487,33 +1514,116 @@ app.post('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: 
 
     let result;
     if (id) {
-      // Atualizar
+      // Atualizar - monta query dinâmica apenas com campos fornecidos
+      const updates: string[] = [];
+      const values: any[] = [];
+      let paramCount = 1;
+
+      if (apelido !== undefined) {
+        updates.push(`apelido = $${paramCount++}`);
+        values.push(apelido);
+      }
+      if (bandeira !== undefined) {
+        updates.push(`bandeira = $${paramCount++}`);
+        values.push(bandeira);
+      }
+      if (limite_total !== undefined) {
+        updates.push(`limite_total = $${paramCount++}`);
+        values.push(limite_total);
+      }
+      if (dia_fechamento !== undefined) {
+        updates.push(`dia_fechamento = $${paramCount++}`);
+        values.push(dia_fechamento);
+      }
+      if (dia_vencimento !== undefined) {
+        updates.push(`dia_vencimento = $${paramCount++}`);
+        values.push(dia_vencimento);
+      }
+      if (conta_pagamento_id !== undefined) {
+        updates.push(`conta_pagamento_id = $${paramCount++}`);
+        values.push(conta_pagamento_id);
+      }
+      if (is_deleted !== undefined) {
+        updates.push(`is_deleted = $${paramCount++}`);
+        values.push(is_deleted);
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({
+          error: 'Nenhum campo para atualizar'
+        });
+      }
+
+      values.push(id);
+      values.push(tenantId);
+
       result = await query(
         `UPDATE financeiro.cartao 
-         SET apelido = $1, bandeira = $2, limite_total = $3, 
-             dia_fechamento = $4, dia_vencimento = $5, 
-             conta_pagamento_id = $6, ativo = $7, updated_at = NOW()
-         WHERE id = $8 AND tenant_id = $9
+         SET ${updates.join(', ')}
+         WHERE id = $${paramCount++} AND tenant_id = $${paramCount++}
          RETURNING *`,
-        [apelido, bandeira, limite_total, dia_fechamento, dia_vencimento,
-          conta_pagamento_id, ativo, id, tenantId]
+        values
       );
     } else {
       // Inserir
       result = await query(
         `INSERT INTO financeiro.cartao 
          (apelido, bandeira, limite_total, dia_fechamento, dia_vencimento,
-          conta_pagamento_id, ativo, tenant_id)
+          conta_pagamento_id, is_deleted, tenant_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
          RETURNING *`,
         [apelido, bandeira, limite_total, dia_fechamento, dia_vencimento,
-          conta_pagamento_id, ativo, tenantId]
+          conta_pagamento_id, is_deleted, tenantId]
       );
     }
 
     res.json(result.rows[0]);
   } catch (error: any) {
     console.error('Erro ao salvar cartão:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Deletar cartão (soft delete)
+app.delete('/api/cartoes/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
+
+    // Verificar se existem faturas abertas para este cartão
+    const faturasResult = await query(
+      `SELECT COUNT(*) as total 
+       FROM financeiro.fatura 
+       WHERE cartao_id = $1 AND tenant_id = $2 AND status = 'aberta'`,
+      [id, tenantId]
+    );
+
+    if (parseInt(faturasResult.rows[0].total) > 0) {
+      return res.status(409).json({
+        error: 'Não é possível excluir cartão com faturas em aberto'
+      });
+    }
+
+    // Soft delete
+    const result = await query(
+      `UPDATE financeiro.cartao 
+       SET is_deleted = true 
+       WHERE id = $1 AND tenant_id = $2 
+       RETURNING *`,
+      [id, tenantId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Cartão não encontrado' });
+    }
+
+    res.json({ message: 'Cartão excluído com sucesso', cartao: result.rows[0] });
+  } catch (error: any) {
+    console.error('Erro ao deletar cartão:', error);
     res.status(500).json({ error: error.message });
   }
 });
@@ -1634,7 +1744,7 @@ app.post('/api/recorrencias', authenticateToken(pool), async (req: AuthRequest, 
          SET conta_id = $1, categoria_id = $2,
              tipo = $3, valor = $4, descricao = $5, frequencia = $6,
              dia_vencimento = $7, data_inicio = $8, data_fim = $9,
-             is_paused = $10, alerta_dias_antes = $11, updated_at = NOW()
+             is_paused = $10, alerta_dias_antes = $11
          WHERE id = $12 AND tenant_id = $13
          RETURNING *`,
         [conta_id, categoria_id, tipo, valor, descricao,
@@ -1793,7 +1903,7 @@ app.post('/api/compras', authenticateToken(pool), async (req: AuthRequest, res: 
         `UPDATE financeiro.fatura_item 
          SET categoria_id = $1, descricao = $2, valor = $3, 
              data_compra = $4, parcela_numero = $5, parcela_total = $6,
-             competencia = $7, updated_at = NOW()
+             competencia = $7
          WHERE id = $8 AND tenant_id = $9
          RETURNING *`,
         [categoria_id, descricao, valor, data_compra, parcela_numero, parcela_total,
@@ -2139,6 +2249,91 @@ app.get('/api/faturas/itens', authenticateToken(pool), async (req: AuthRequest, 
   }
 });
 
+// Atualizar parcela (fatura_item) - usado pelo evento parcela.upsert
+app.post('/api/parcelas', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const { id, descricao, valor, categoria_id, data_compra } = req.body;
+    const tenantId = req.user?.tenantId;
+
+    if (!id) {
+      return res.status(400).json({ error: 'ID da parcela é obrigatório' });
+    }
+
+    if (!tenantId) {
+      return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+    }
+
+    // Verificar se a parcela existe e se a fatura não está fechada/paga
+    const parcelaResult = await query(
+      `SELECT fi.*, f.status as fatura_status
+       FROM financeiro.fatura_item fi
+       JOIN financeiro.fatura f ON fi.fatura_id = f.id
+       WHERE fi.id = $1 AND fi.tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (parcelaResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Parcela não encontrada' });
+    }
+
+    const parcela = parcelaResult.rows[0];
+
+    if (parcela.fatura_status === 'fechada') {
+      return res.status(400).json({
+        error: 'Não é possível editar parcelas de fatura fechada'
+      });
+    }
+
+    if (parcela.fatura_status === 'paga') {
+      return res.status(400).json({
+        error: 'Não é possível editar parcelas de fatura paga'
+      });
+    }
+
+    // Atualizar apenas os campos fornecidos
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (descricao !== undefined) {
+      updates.push(`descricao = $${paramCount++}`);
+      values.push(descricao);
+    }
+    if (valor !== undefined) {
+      updates.push(`valor = $${paramCount++}`);
+      values.push(valor);
+    }
+    if (categoria_id !== undefined) {
+      updates.push(`categoria_id = $${paramCount++}`);
+      values.push(categoria_id);
+    }
+    if (data_compra !== undefined) {
+      updates.push(`data_compra = $${paramCount++}`);
+      values.push(data_compra);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    values.push(id);
+    values.push(tenantId);
+
+    const result = await query(
+      `UPDATE financeiro.fatura_item 
+       SET ${updates.join(', ')}
+       WHERE id = $${paramCount++} AND tenant_id = $${paramCount++}
+       RETURNING *`,
+      values
+    );
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Erro ao atualizar parcela:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== EVENTOS DE FATURA ====================
 
 // Evento: Fechar fatura
@@ -2385,6 +2580,68 @@ app.get("/api/debug/parcelas", async (req, res) => {
         ativas: result.rows.filter((p: any) => p.ativo).length,
         inativas: result.rows.filter((p: any) => !p.ativo).length
       }
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// 🔍 DEBUG: Endpoint para listar schema completo do banco
+app.get("/api/debug/schema", async (req, res) => {
+  try {
+    // Listar todas as tabelas
+    const tablesResult = await query(`
+      SELECT table_name
+      FROM information_schema.tables
+      WHERE table_schema = 'financeiro'
+      ORDER BY table_name;
+    `);
+
+    const schema: any = {};
+
+    for (const row of tablesResult.rows) {
+      const tableName = row.table_name;
+
+      // Colunas
+      const columnsResult = await query(`
+        SELECT 
+          column_name, 
+          data_type, 
+          is_nullable,
+          column_default
+        FROM information_schema.columns
+        WHERE table_schema = 'financeiro' 
+          AND table_name = $1
+        ORDER BY ordinal_position;
+      `, [tableName]);
+
+      // Constraints
+      const constraintsResult = await query(`
+        SELECT 
+          tc.constraint_type,
+          kcu.column_name,
+          ccu.table_name AS foreign_table,
+          ccu.column_name AS foreign_column
+        FROM information_schema.table_constraints tc
+        JOIN information_schema.key_column_usage kcu 
+          ON tc.constraint_name = kcu.constraint_name
+        LEFT JOIN information_schema.constraint_column_usage ccu 
+          ON ccu.constraint_name = tc.constraint_name
+        WHERE tc.table_schema = 'financeiro' 
+          AND tc.table_name = $1
+          AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY');
+      `, [tableName]);
+
+      schema[tableName] = {
+        columns: columnsResult.rows,
+        constraints: constraintsResult.rows
+      };
+    }
+
+    res.json({
+      total_tables: tablesResult.rows.length,
+      tables: tablesResult.rows.map((r: any) => r.table_name),
+      schema
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
