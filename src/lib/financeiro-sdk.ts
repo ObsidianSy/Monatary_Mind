@@ -125,14 +125,16 @@ export class FinanceiroSDK {
     payload: any,
     options?: { eventId?: string; occurredAt?: string }
   ): Promise<any> {
-    // Validações
-    if (eventType === "transacao.upsert") {
+    // Validações (não aplicar em soft deletes)
+    const isSoftDelete = payload?.is_deleted === true;
+
+    if (eventType === "transacao.upsert" && !isSoftDelete) {
       const tipo = (payload?.tipo || "").toLowerCase();
       if ((tipo === "credito" || tipo === "debito") && !payload?.subcategoria_id && !payload?.categoria_id) {
         throw new Error("Categoria/Subcategoria é obrigatória para crédito/débito (envie subcategoria_id de preferência)");
       }
     }
-    if (eventType === "recorrencia.upsert") {
+    if (eventType === "recorrencia.upsert" && !isSoftDelete) {
       if (!payload?.subcategoria_id && !payload?.categoria_id) {
         throw new Error("Categoria/Subcategoria é obrigatória na recorrência (envie subcategoria_id de preferência)");
       }

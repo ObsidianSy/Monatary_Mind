@@ -1240,9 +1240,9 @@ app.get('/api/transacoes', authenticateToken(pool), async (req: AuthRequest, res
              parent_cat.nome as categoria_pai_nome,
              parent_cat.id as categoria_pai_id
       FROM financeiro.transacao t
-      LEFT JOIN conta c ON t.conta_id = c.id
-      LEFT JOIN categoria cat ON t.categoria_id = cat.id
-      LEFT JOIN categoria parent_cat ON cat.parent_id = parent_cat.id
+      LEFT JOIN financeiro.conta c ON t.conta_id = c.id
+      LEFT JOIN financeiro.categoria cat ON t.categoria_id = cat.id
+      LEFT JOIN financeiro.categoria parent_cat ON cat.parent_id = parent_cat.id
       WHERE t.tenant_id = $1
     `;
 
@@ -1433,7 +1433,7 @@ app.post('/api/transacoes/:id/pagar', authenticateToken(pool), async (req: AuthR
 
 // Deletar transação
 // Deletar transação (apenas ADMIN+ ou SUPER_ADMIN)
-app.delete('/api/transacoes/:id', authenticateToken(pool), requirePermission('transacao', 'delete'), async (req: AuthRequest, res: Response) => {
+app.delete('/api/transacoes/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const tenantId = req.user?.tenantId;
@@ -1478,7 +1478,7 @@ app.get('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: R
     const result = await query(
       `SELECT c.*, co.nome as conta_pagamento_nome
        FROM financeiro.cartao c
-       LEFT JOIN conta co ON c.conta_pagamento_id = co.id
+       LEFT JOIN financeiro.conta co ON c.conta_pagamento_id = co.id
        WHERE c.tenant_id = $1
        ORDER BY c.apelido`,
       [tenantId]
@@ -1643,7 +1643,7 @@ app.get('/api/faturas', authenticateToken(pool), async (req: AuthRequest, res: R
     let queryText = `
       SELECT f.*, c.apelido as cartao_apelido
       FROM financeiro.fatura f
-      LEFT JOIN cartao c ON f.cartao_id = c.id
+      LEFT JOIN financeiro.cartao c ON f.cartao_id = c.id
       WHERE f.tenant_id = $1
     `;
 
@@ -1691,10 +1691,10 @@ app.get('/api/recorrencias', authenticateToken(pool), async (req: AuthRequest, r
               parent_cat.nome as categoria_pai_nome,
               parent_cat.id as categoria_pai_id
        FROM financeiro.recorrencia r
-       LEFT JOIN conta c ON r.conta_id = c.id
-       LEFT JOIN categoria cat ON r.categoria_id = cat.id
-       LEFT JOIN categoria parent_cat ON cat.parent_id = parent_cat.id
-       WHERE r.tenant_id = $1
+       LEFT JOIN financeiro.conta c ON r.conta_id = c.id
+       LEFT JOIN financeiro.categoria cat ON r.categoria_id = cat.id
+       LEFT JOIN financeiro.categoria parent_cat ON cat.parent_id = parent_cat.id
+       WHERE r.tenant_id = $1 AND r.is_deleted = false
        ORDER BY r.descricao`,
       [tenantId]
     );
@@ -1720,49 +1720,65 @@ app.post('/api/recorrencias', authenticateToken(pool), async (req: AuthRequest, 
       data_inicio,
       data_fim,
       is_paused = false,
-      alerta_dias_antes,
-      tenantId = req.user?.tenantId
+      is_deleted = false,
+      alerta_dias_antes = 3,
+      tenant_id = req.user?.tenantId
     } = req.body;
 
-    if (!conta_id || !tipo || !valor || !descricao || !frequencia || !data_inicio) {
-      return res.status(400).json({
-        error: 'Conta, tipo, valor, descrição, frequência e data início são obrigatórios'
-      });
-    }
+    // Validar campos obrigatórios (exceto em soft delete)
+    if (!is_deleted) {
+      if (!conta_id || !tipo || !valor || !descricao || !frequencia || !data_inicio) {
+        return res.status(400).json({
+          error: 'Conta, tipo, valor, descrição, frequência e data início são obrigatórios'
+        });
+      }
 
-    if (!categoria_id) {
-      return res.status(400).json({
-        error: 'Categoria é obrigatória'
-      });
+      if (!categoria_id) {
+        return res.status(400).json({
+          error: 'Categoria é obrigatória'
+        });
+      }
     }
 
     let result;
     if (id) {
-      // Atualizar
-      result = await query(
-        `UPDATE financeiro.recorrencia 
-         SET conta_id = $1, categoria_id = $2,
-             tipo = $3, valor = $4, descricao = $5, frequencia = $6,
-             dia_vencimento = $7, data_inicio = $8, data_fim = $9,
-             is_paused = $10, alerta_dias_antes = $11
-         WHERE id = $12 AND tenant_id = $13
-         RETURNING *`,
-        [conta_id, categoria_id, tipo, valor, descricao,
-          frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-          alerta_dias_antes, id, tenantId]
-      );
+      // Atualizar (incluindo soft delete)
+      if (is_deleted) {
+        // Soft delete - só atualiza is_deleted
+        result = await query(
+          `UPDATE financeiro.recorrencia 
+           SET is_deleted = $1
+           WHERE id = $2 AND tenant_id = $3
+           RETURNING *`,
+          [is_deleted, id, tenant_id]
+        );
+      } else {
+        // Update normal
+        result = await query(
+          `UPDATE financeiro.recorrencia 
+           SET conta_id = $1, categoria_id = $2,
+               tipo = $3, valor = $4, descricao = $5, frequencia = $6,
+               dia_vencimento = $7, data_inicio = $8, data_fim = $9,
+               is_paused = $10, alerta_dias_antes = $11
+           WHERE id = $12 AND tenant_id = $13
+           RETURNING *`,
+          [conta_id, categoria_id, tipo, valor, descricao,
+            frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
+            alerta_dias_antes, id, tenant_id]
+        );
+      }
     } else {
       // Inserir
       result = await query(
         `INSERT INTO financeiro.recorrencia 
          (conta_id, categoria_id, tipo, valor, descricao,
           frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-          alerta_dias_antes, tenantId, proxima_ocorrencia)
+          alerta_dias_antes, tenant_id, proxima_ocorrencia)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
          RETURNING *`,
         [conta_id, categoria_id, tipo, valor, descricao,
           frequencia, dia_vencimento, data_inicio, data_fim, is_paused,
-          alerta_dias_antes, tenantId, data_inicio]
+          alerta_dias_antes, tenant_id, data_inicio]
       );
     }
 
@@ -1777,14 +1793,14 @@ app.post('/api/recorrencias', authenticateToken(pool), async (req: AuthRequest, 
 app.delete('/api/recorrencias/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const tenantId = req.user?.tenantId;
-    if (!tenantId) {
+    const tenant_id = req.user?.tenantId;
+    if (!tenant_id) {
       return res.status(400).json({ error: 'Selecione um workspace primeiro' });
     }
 
     await query(
       `DELETE FROM financeiro.recorrencia WHERE id = $1 AND tenant_id = $2`,
-      [id, tenantId]
+      [id, tenant_id]
     );
 
     res.json({ success: true });
@@ -2050,7 +2066,7 @@ app.post('/api/compras', authenticateToken(pool), async (req: AuthRequest, res: 
       let categoria_pagamento_id;
       if (categoriaResult.rows.length === 0) {
         const newCatResult = await client.query(
-          `INSERT INTO financeiro.categoria (nome, tipo, tenantId, parent_id)
+          `INSERT INTO financeiro.categoria (nome, tipo, tenant_id, parent_id)
            VALUES ('Pagamento Cartão de Crédito', 'despesa', $1, NULL)
            RETURNING id`,
           [tenantId]

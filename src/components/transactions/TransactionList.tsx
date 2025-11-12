@@ -43,6 +43,7 @@ interface TransactionListProps {
   onSelectAll: () => void;
   onEdit: (transaction: Transaction) => void;
   onRegistrar: (transaction: Transaction) => void;
+  onDelete?: (transaction: Transaction) => void;
   onRefresh: () => void;
   onNewTransaction: () => void;
 }
@@ -55,7 +56,7 @@ const typeIcons = {
 
 const typeColors = {
   income: "text-success",
-  expense: "text-destructive", 
+  expense: "text-destructive",
   transfer: "text-primary"
 };
 
@@ -87,6 +88,7 @@ export function TransactionList({
   onSelectAll,
   onEdit,
   onRegistrar,
+  onDelete,
   onRefresh,
   onNewTransaction
 }: TransactionListProps) {
@@ -151,13 +153,12 @@ export function TransactionList({
           <div className="space-y-0">
             {paginatedTransactions.map((transaction, index) => {
               const TypeIcon = typeIcons[transaction.type];
-              
+
               return (
-                <div 
+                <div
                   key={transaction.id}
-                  className={`p-4 hover:bg-muted/50 transition-colors ${
-                    index !== paginatedTransactions.length - 1 ? 'border-b border-border' : ''
-                  }`}
+                  className={`p-4 hover:bg-muted/50 transition-colors ${index !== paginatedTransactions.length - 1 ? 'border-b border-border' : ''
+                    }`}
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-4 flex-1">
@@ -168,14 +169,14 @@ export function TransactionList({
                       <div className={`w-10 h-10 rounded-full bg-muted flex items-center justify-center ${typeColors[transaction.type]}`}>
                         <TypeIcon className="w-5 h-5" />
                       </div>
-                      
+
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h3 className="font-semibold truncate">{transaction.description}</h3>
                           <Badge variant="outline" className={statusColors[transaction.status]}>
                             {statusLabels[transaction.status]}
                           </Badge>
-                          
+
                           {/* Overdue badges */}
                           {(activeTab === "receivable" || activeTab === "payable") && transaction.status === "pending" && (
                             <>
@@ -191,14 +192,14 @@ export function TransactionList({
                               )}
                             </>
                           )}
-                          
+
                           {transaction.installments && transaction.installments > 1 && (
                             <Badge variant="outline" className="text-xs">
                               {transaction.currentInstallment}/{transaction.installments}
                             </Badge>
                           )}
                         </div>
-                        
+
                         <div className="flex flex-wrap gap-2 text-sm text-muted-foreground">
                           <span>{transaction.category} • {transaction.subcategory}</span>
                           <span>•</span>
@@ -208,21 +209,21 @@ export function TransactionList({
                           <span>•</span>
                           <span>{format(transaction.date, "dd/MM/yyyy", { locale: ptBR })}</span>
                         </div>
-                        
+
                         {transaction.notes && (
                           <div className="text-xs text-muted-foreground mt-1">{transaction.notes}</div>
                         )}
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-4">
                       <div className="text-right">
                         <div className="flex items-center gap-1">
                           <span className={`text-lg font-bold ${typeColors[transaction.type]}`}>
                             {transaction.type === "income" ? "+" : transaction.type === "expense" ? "-" : ""}
                           </span>
-                          <ValueDisplay 
-                            value={transaction.amount} 
+                          <ValueDisplay
+                            value={transaction.amount}
                             size="lg"
                             variant={transaction.type === "income" ? "success" : transaction.type === "expense" ? "destructive" : "default"}
                           />
@@ -233,11 +234,11 @@ export function TransactionList({
                           </div>
                         )}
                       </div>
-                      
+
                       <div className="flex gap-1">
                         {transaction.status === "pending" && (
-                          <Button 
-                            variant="default" 
+                          <Button
+                            variant="default"
                             size="sm"
                             className="bg-success hover:bg-success/90 text-white"
                             onClick={() => onRegistrar(transaction)}
@@ -246,14 +247,19 @@ export function TransactionList({
                             Registrar
                           </Button>
                         )}
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="sm"
                           onClick={() => onEdit(transaction)}
                         >
                           <Edit className="w-4 h-4" />
                         </Button>
-                        <Button variant="ghost" size="sm" className="text-destructive hover:text-destructive">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => onDelete && onDelete(transaction)}
+                        >
                           <Trash2 className="w-4 h-4" />
                         </Button>
                       </div>
@@ -293,7 +299,7 @@ export function TransactionList({
                 } else {
                   pageNum = currentPage - 2 + i;
                 }
-                
+
                 return (
                   <Button
                     key={pageNum}

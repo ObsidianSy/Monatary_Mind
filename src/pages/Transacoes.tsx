@@ -87,7 +87,7 @@ const transformAPITransaction = (
   };
 
   const valorNumerico = parseFloat(String(apiTransaction.valor));
-  
+
   if (isNaN(valorNumerico)) {
     console.error('Transação com valor inválido:', apiTransaction);
   }
@@ -137,24 +137,24 @@ export default function Transacoes() {
     tipo: string;
   } | null>(null);
   const { toast } = useToast();
-  
+
   // Buscar contas e categorias para JOINs manuais
   const { accounts: rawAccounts } = useAccounts();
   const { categories: rawCategories } = useCategories();
-  
+
   // ✅ Memoizar arrays para evitar re-renders desnecessários
   const accounts = useMemo(() => rawAccounts, [rawAccounts.length]);
   const categories = useMemo(() => rawCategories, [rawCategories.length]);
-  
+
   // Buscar recorrências
-  const { 
-    recurrences, 
-    activeRecurrences, 
+  const {
+    recurrences,
+    activeRecurrences,
     loading: loadingRecurrences,
     refresh: refreshRecurrences,
-    pauseRecurrence, 
-    resumeRecurrence, 
-    deleteRecurrence 
+    pauseRecurrence,
+    resumeRecurrence,
+    deleteRecurrence
   } = useRecurrences();
 
   // Hook para gerar contas do mês
@@ -208,7 +208,7 @@ export default function Transacoes() {
       }
 
       const apiTransactions = await apiClient.getTransactions(filters);
-      
+
       // ✅ Debug log para identificar duplicatas
       console.debug("DEBUG Transações - Carregadas da API:", {
         total: apiTransactions.length,
@@ -216,15 +216,15 @@ export default function Transacoes() {
         tab: activeTab,
         duplicatas: apiTransactions.length - new Set(apiTransactions.map(t => t.id)).size
       });
-      
+
       setApiTransactions(apiTransactions);
-      
+
       // ✅ Deduplica transações por ID para evitar duplicatas da API
       const uniqueApiTransactions = Array.from(
         new Map(apiTransactions.map(t => [t.id, t])).values()
       );
-      
-      const transformedTransactions = uniqueApiTransactions.map(t => 
+
+      const transformedTransactions = uniqueApiTransactions.map(t =>
         transformAPITransaction(t, accounts, categories)
       );
       setTransactions(transformedTransactions);
@@ -245,7 +245,7 @@ export default function Transacoes() {
     const timer = setTimeout(() => {
       loadTransactions();
     }, 300);
-    
+
     return () => clearTimeout(timer);
   }, [loadTransactions]); // ✅ Agora loadTransactions é estável
 
@@ -255,26 +255,26 @@ export default function Transacoes() {
       const hoje = new Date();
       const year = hoje.getFullYear();
       const month = hoje.getMonth() + 1; // getMonth() retorna 0-11
-      
+
       // Buscar transações existentes para verificar duplicatas
       const existingTransactions = await apiClient.getTransactions({
         limit: 1000,
         from: format(startOfMonth(hoje), 'yyyy-MM-dd'),
         to: format(endOfMonth(hoje), 'yyyy-MM-dd')
       });
-      
+
       const created = await generateMonthFromRecurrences(
-        year, 
-        month, 
+        year,
+        month,
         activeRecurrences,
         existingTransactions
       );
-      
+
       toast({
         title: "Contas geradas",
         description: `${created} conta(s) criada(s) para ${format(hoje, "MMMM/yyyy", { locale: ptBR })}`,
       });
-      
+
       handleRefreshAll();
     } catch (error) {
       toast({
@@ -304,8 +304,8 @@ export default function Transacoes() {
 
   const handleSelectAll = () => {
     setSelectedTransactions(
-      selectedTransactions.size === sortedTransactions.length 
-        ? new Set() 
+      selectedTransactions.size === sortedTransactions.length
+        ? new Set()
         : new Set(sortedTransactions.map(t => t.id))
     );
   };
@@ -334,19 +334,39 @@ export default function Transacoes() {
     setSelectedTransactions(new Set());
   };
 
-  const handleBulkExcluir = () => {
-    toast({
-      title: `${selectedTransactions.size} transações excluídas`,
-      description: "As transações foram removidas.",
-      variant: "destructive",
-    });
-    setSelectedTransactions(new Set());
+  const handleBulkExcluir = async () => {
+    if (!confirm(`Deseja realmente excluir ${selectedTransactions.size} transação(ões)?`)) {
+      return;
+    }
+
+    try {
+      // Excluir todas as transações selecionadas
+      const promises = Array.from(selectedTransactions).map(id =>
+        apiClient.postEvent("transacao.delete", { id })
+      );
+
+      await Promise.all(promises);
+
+      toast({
+        title: `${selectedTransactions.size} transações excluídas`,
+        description: "As transações foram removidas com sucesso.",
+      });
+
+      setSelectedTransactions(new Set());
+      await loadTransactions();
+    } catch (error: any) {
+      toast({
+        title: "Erro ao excluir",
+        description: error.message || "Não foi possível excluir as transações.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleEdit = (transaction: Transaction) => {
     // Encontrar os dados originais da API para passar ao modal
     const apiTransaction = apiTransactions.find(t => t.id === transaction.id);
-    
+
     if (!apiTransaction) {
       toast({
         title: "Erro",
@@ -355,15 +375,39 @@ export default function Transacoes() {
       });
       return;
     }
-    
+
     setEditingTransaction(transaction);
     setIsEditModalOpen(true);
+  };
+
+  const handleDelete = async (transaction: Transaction) => {
+    if (!confirm(`Deseja realmente excluir a transação "${transaction.description}"?`)) {
+      return;
+    }
+
+    try {
+      await apiClient.postEvent("transacao.delete", { id: transaction.id });
+
+      toast({
+        title: "Transação excluída",
+        description: "A transação foi excluída com sucesso.",
+      });
+
+      // Recarregar transações
+      await loadTransactions();
+    } catch (error: any) {
+      toast({
+        title: "Erro ao excluir",
+        description: error.message || "Não foi possível excluir a transação.",
+        variant: "destructive",
+      });
+    }
   };
 
   const handleRegistrarTransacao = async (transaction: Transaction) => {
     const conta = accounts.find(a => a.nome === transaction.account);
     const categoria = categories.find(c => c.nome === transaction.category);
-    
+
     setConfirmTransactionData({
       id: transaction.id,
       description: transaction.description,
@@ -400,12 +444,12 @@ export default function Transacoes() {
         referencia: data.observacoes || transacaoOriginal.referencia || "",
         status: "liquidado"
       });
-      
+
       toast({
         title: "Transação registrada",
         description: "A transação foi marcada como concluída.",
       });
-      
+
       setIsConfirmModalOpen(false);
       handleRefreshAll();
     } catch (error) {
@@ -421,7 +465,7 @@ export default function Transacoes() {
     const conta = accounts.find(a => a.id === recorrencia.conta_id);
     const categoria = categories.find(c => c.id === recorrencia.categoria_id);
     const valor = typeof recorrencia.valor === 'string' ? parseFloat(recorrencia.valor) : recorrencia.valor;
-    
+
     setConfirmTransactionData({
       id: undefined, // Recorrência não tem ID ainda
       description: recorrencia.descricao,
@@ -432,14 +476,14 @@ export default function Transacoes() {
       date: new Date(recorrencia.proxima_ocorrencia),
       notes: undefined
     });
-    
+
     // Salvar dados extras da recorrência em estado separado
     setRecorrenciaExtraData({
       conta_id: recorrencia.conta_id,
       categoria_id: recorrencia.categoria_id,
       tipo: recorrencia.tipo
     });
-    
+
     setIsConfirmModalOpen(true);
   };
 
@@ -461,12 +505,12 @@ export default function Transacoes() {
         data_liquidacao: format(new Date(), "yyyy-MM-dd"),
         origem: "manual"
       });
-      
+
       toast({
         title: "Recorrência registrada",
         description: "A transação foi criada e efetivada com sucesso.",
       });
-      
+
       handleRefreshAll();
       setRecorrenciaExtraData(null);
     } catch (err) {
@@ -482,22 +526,22 @@ export default function Transacoes() {
   const cleanupFutureTransactions = async () => {
     try {
       setLoading(true);
-      
+
       // Buscar TODAS as transações sem filtro de data
       const allTransactions = await apiClient.getTransactions({
         limit: 1000,
         status: "previsto" // Apenas previstas, não deletar liquidadas
       });
-      
+
       // Definir data máxima (3 meses no futuro)
       const maxDate = addMonths(new Date(), 3);
-      
+
       // Filtrar transações além de 3 meses
       const futureTransactions = allTransactions.filter(t => {
         const transDate = parseDate(t.data_transacao);
         return transDate > maxDate;
       });
-      
+
       if (futureTransactions.length === 0) {
         toast({
           title: "Nenhuma transação inválida encontrada",
@@ -506,40 +550,40 @@ export default function Transacoes() {
         setLoading(false);
         return;
       }
-      
+
       // Pedir confirmação
       const confirmed = window.confirm(
         `Foram encontradas ${futureTransactions.length} transações futuras inválidas (além de 3 meses).\n\n` +
         `Deseja remover essas transações?\n\n` +
         `Esta ação não pode ser desfeita.`
       );
-      
+
       if (!confirmed) {
         setLoading(false);
         return;
       }
-      
+
       // Deletar transações
       let deletedCount = 0;
       for (const transaction of futureTransactions) {
         try {
-          await apiClient.postEvent("transacao.delete", { 
-            id: transaction.id 
+          await apiClient.postEvent("transacao.delete", {
+            id: transaction.id
           });
           deletedCount++;
         } catch (err) {
           console.error(`Erro ao deletar transação ${transaction.id}:`, err);
         }
       }
-      
+
       toast({
         title: "Limpeza concluída",
         description: `${deletedCount} de ${futureTransactions.length} transações futuras foram removidas.`,
       });
-      
+
       // Recarregar transações
       await loadTransactions();
-      
+
     } catch (err) {
       toast({
         title: "Erro ao limpar transações",
@@ -601,43 +645,44 @@ export default function Transacoes() {
 
         {/* Tabs para Todas, Efetivadas, A Receber e A Pagar */}
         {["all", "completed", "receivable", "payable"].includes(activeTab) && (
-        <TabsContent value={activeTab} className="space-y-6 mt-6">
-          {/* Filters */}
-          <TransactionFilters
-            activeTab={activeTab}
-            searchTerm={searchTerm}
-            onSearchChange={setSearchTerm}
-            filterType={filterType}
-            onFilterTypeChange={setFilterType}
-            filterStatus={filterStatus}
-            onFilterStatusChange={setFilterStatus}
-            dateRange={dateRange}
-            onDateRangeChange={setDateRange}
-          />
+          <TabsContent value={activeTab} className="space-y-6 mt-6">
+            {/* Filters */}
+            <TransactionFilters
+              activeTab={activeTab}
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              filterType={filterType}
+              onFilterTypeChange={setFilterType}
+              filterStatus={filterStatus}
+              onFilterStatusChange={setFilterStatus}
+              dateRange={dateRange}
+              onDateRangeChange={setDateRange}
+            />
 
-          {/* Summary Cards */}
-          <TransactionSummary
-            activeTab={activeTab}
-            transactions={sortedTransactions}
-            onNewTransaction={() => setIsNewTransactionModalOpen(true)}
-            onRefresh={loadTransactions}
-          />
+            {/* Summary Cards */}
+            <TransactionSummary
+              activeTab={activeTab}
+              transactions={sortedTransactions}
+              onNewTransaction={() => setIsNewTransactionModalOpen(true)}
+              onRefresh={loadTransactions}
+            />
 
-          {/* Transactions List */}
-          <TransactionList
-            transactions={sortedTransactions}
-            loading={loading}
-            error={error}
-            activeTab={activeTab}
-            selectedTransactions={selectedTransactions}
-            onSelectTransaction={handleSelectTransaction}
-            onSelectAll={handleSelectAll}
-            onEdit={handleEdit}
-            onRegistrar={handleRegistrarTransacao}
-            onRefresh={loadTransactions}
-            onNewTransaction={() => setIsNewTransactionModalOpen(true)}
-          />
-        </TabsContent>
+            {/* Transactions List */}
+            <TransactionList
+              transactions={sortedTransactions}
+              loading={loading}
+              error={error}
+              activeTab={activeTab}
+              selectedTransactions={selectedTransactions}
+              onSelectTransaction={handleSelectTransaction}
+              onSelectAll={handleSelectAll}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+              onRegistrar={handleRegistrarTransacao}
+              onRefresh={loadTransactions}
+              onNewTransaction={() => setIsNewTransactionModalOpen(true)}
+            />
+          </TabsContent>
         )}
 
         {/* Recorrências Tab */}
@@ -661,7 +706,7 @@ export default function Transacoes() {
                 }
               ]}
             />
-            
+
             <ActionableCard
               title="Despesas Recorrentes"
               value={`R$ ${activeRecurrences
@@ -671,7 +716,7 @@ export default function Transacoes() {
               icon={<TrendingDown className="w-5 h-5" />}
               status="error"
             />
-            
+
             <ActionableCard
               title="Total Ativas"
               value={activeRecurrences.length.toString()}
@@ -715,7 +760,7 @@ export default function Transacoes() {
                     const conta = accounts.find(a => a.id === recorrencia.conta_id);
                     const categoria = categories.find(c => c.id === recorrencia.categoria_id);
                     const valor = typeof recorrencia.valor === 'string' ? parseFloat(recorrencia.valor) : recorrencia.valor;
-                    
+
                     const frequenciaLabel = {
                       mensal: "Mensal",
                       semanal: "Semanal",
@@ -738,7 +783,7 @@ export default function Transacoes() {
                               <TrendingDown className="w-5 h-5 text-destructive" />
                             )}
                           </div>
-                          
+
                           <div className="flex-1">
                             <h3 className="font-semibold">{recorrencia.descricao}</h3>
                             <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">

@@ -148,4 +148,9 @@ EXEMPLO CURTO (FORMATO)
 [6] Checklist
 - Permissões, mensagens claras, logs úteis, UX com confirmação.
 
+
+[7] Preciso que vc sempre entenda que estou fazendo no localhost mas eu vou subir na vps, entao sempre tudo que fizermos precisa atender os 2 locais automaticamente, reconhecer sabe.
+
+[8] sempre vc localiza o erro me da o motivo e as formas de arrumar ja direto.
+
 FIM DO PROMPT. Cumpra estritamente o MODO BANCO DE DADOS e o ROTEIRO.
