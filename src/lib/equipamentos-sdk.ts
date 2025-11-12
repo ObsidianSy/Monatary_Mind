@@ -1,7 +1,9 @@
 // equipamentos-sdk.ts
 // SDK para integração com API de Equipamentos (Backend Local)
 
-const DEFAULT_BASE = "http://localhost:3001/api";
+import { getApiUrl } from './api-config';
+
+const DEFAULT_BASE = getApiUrl();
 
 function safeJson(text: string): any | undefined {
   try { return JSON.parse(text); } catch { return undefined; }

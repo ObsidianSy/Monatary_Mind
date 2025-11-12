@@ -1,7 +1,9 @@
 // financeiro-sdk.ts
 // SDK TS para conexão com backend local PostgreSQL
 
-const DEFAULT_BASE = import.meta.env.VITE_API_URL || "http://localhost:3001/api";
+import { getApiUrl } from './api-config';
+
+const DEFAULT_BASE = getApiUrl();
 
 function safeJson(text: string): any | undefined {
   try { return JSON.parse(text); } catch { return undefined; }
