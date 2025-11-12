@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { Package, Box, Wrench, Plus, Pencil, Trash2, Search, Filter, X } from "lucide-react";
 import EquipamentosSDK from "@/lib/equipamentos-sdk";
-import { estoqueSDK } from "@/lib/estoque-sdk";
+import EstoqueSDK from "@/lib/estoque-sdk";
 import { Button } from "@/components/ui/button";
 import { usePrivacy } from "@/contexts/PrivacyContext";
 import { useTenant } from "@/contexts/TenantContext";
@@ -112,7 +112,7 @@ export default function Inventario() {
   // Debug: Log do workspace atual
   console.log("🔍 Inventario - Workspace atual:", currentWorkspace);
 
-  // Criar instância do SDK com o tenant correto
+  // Criar instâncias dos SDKs com o tenant correto
   const equipamentosSDK = useMemo(() => {
     // ✅ Usar tenant_id ao invés de id
     const tenantId = currentWorkspace?.tenant_id || "obsidian";
@@ -121,6 +121,14 @@ export default function Inventario() {
       tenantId
     });
   }, [currentWorkspace?.tenant_id]); // ✅ Dependência correta
+
+  const estoqueSDK = useMemo(() => {
+    const tenantId = currentWorkspace?.tenant_id || "obsidian";
+    console.log("🔧 Criando estoqueSDK com tenantId:", tenantId);
+    return new EstoqueSDK({
+      tenantId
+    });
+  }, [currentWorkspace?.tenant_id]);
 
   const [activeTab, setActiveTab] = useState("equipamentos");
   const [loading, setLoading] = useState(true);
@@ -211,15 +219,24 @@ export default function Inventario() {
     console.log("📦 useEffect disparado - carregando dados para workspace:", currentWorkspace?.tenant_id);
     loadEquipamentos();
     loadProdutos();
-  }, [currentWorkspace?.tenant_id, equipamentosSDK]); // ✅ Usar tenant_id
+  }, [currentWorkspace?.tenant_id, equipamentosSDK, estoqueSDK]); // ✅ Inclui ambos os SDKs
 
   const loadEquipamentos = async () => {
     try {
       setLoading(true);
       console.log("📡 Buscando equipamentos com SDK tenant:", equipamentosSDK);
+
+      // Backend já filtra por is_deleted=false automaticamente
       const data = await equipamentosSDK.getEquipamentos();
 
       console.log("📥 Equipamentos recebidos:", data);
+
+      // Verificar se data é um array
+      if (!Array.isArray(data)) {
+        console.warn("getEquipamentos não retornou um array:", data);
+        setEquipamentos([]);
+        return;
+      }
 
       // Converter do formato da API para o formato do frontend
       const equipamentosFormatados = data.map((eq: any) => ({
@@ -238,6 +255,7 @@ export default function Inventario() {
       setEquipamentos(equipamentosFormatados);
     } catch (error) {
       console.error("Erro ao carregar equipamentos:", error);
+      setEquipamentos([]);
       toast.error("Erro ao carregar equipamentos");
     } finally {
       setLoading(false);
@@ -295,24 +313,23 @@ export default function Inventario() {
     e.preventDefault();
 
     try {
-      // Converter data para formato dd/mm/yyyy
-      const [year, month, day] = equipamentoForm.dataAquisicao.split('-');
-      const dataFormatada = `${day}/${month}/${year}`;
-
       const payload = {
-        id: editingEquipamento?.id || null,
         nome: equipamentoForm.nome,
         tipo: equipamentoForm.tipo,
-        marca: equipamentoForm.marca,
-        modelo: equipamentoForm.modelo,
-        numero_serie: equipamentoForm.numeroSerie,
-        valor_aquisicao: equipamentoForm.valor,
-        data_aquisicao: dataFormatada,
-        status: equipamentoForm.status,
+        marca: equipamentoForm.marca || null,
+        modelo: equipamentoForm.modelo || null,
+        numero_serie: equipamentoForm.numeroSerie || null,
+        valor_aquisicao: parseFloat(equipamentoForm.valor) || 0,
+        data_aquisicao: equipamentoForm.dataAquisicao || null,
+        status: equipamentoForm.status || 'ativo',
+        localizacao: null,
+        observacoes: null,
+        patrimonio: null,
+        vida_util_anos: 5
       };
 
       if (editingEquipamento) {
-        await equipamentosSDK.updateEquipamento(payload);
+        await equipamentosSDK.updateEquipamento(editingEquipamento.id, payload);
         toast.success("Equipamento atualizado com sucesso!");
       } else {
         await equipamentosSDK.createEquipamento(payload);

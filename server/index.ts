@@ -2648,6 +2648,490 @@ app.get("/api/debug/schema", async (req, res) => {
   }
 });
 
+// ==================== ROTAS DE ESTOQUE (PRODUTOS) ====================
+
+// GET /api/produtos - Listar produtos ativos do tenant
+app.get('/api/produtos', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        id,
+        tenant_id,
+        sku,
+        nome,
+        categoria,
+        preco_venda,
+        preco_custo,
+        quantidade_disponivel,
+        quantidade_reservada,
+        estoque_minimo,
+        is_ativo,
+        is_kit,
+        variante,
+        imagem_url,
+        created_at,
+        updated_at
+      FROM estoque.produto
+      WHERE tenant_id = $1 AND is_deleted = false
+      ORDER BY nome ASC;
+    `, [tenantId]);
+
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('Erro ao buscar produtos:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/produtos - Criar novo produto
+app.post('/api/produtos', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    const {
+      sku,
+      nome,
+      categoria,
+      preco_venda,
+      preco_custo,
+      quantidade_disponivel,
+      quantidade_reservada,
+      estoque_minimo,
+      is_ativo,
+      is_kit,
+      variante,
+      imagem_url
+    } = req.body;
+
+    // Validação básica
+    if (!sku || !nome) {
+      return res.status(400).json({ error: 'SKU e nome são obrigatórios' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO estoque.produto (
+        tenant_id,
+        sku,
+        nome,
+        categoria,
+        preco_venda,
+        preco_custo,
+        quantidade_disponivel,
+        quantidade_reservada,
+        estoque_minimo,
+        is_ativo,
+        is_kit,
+        variante,
+        imagem_url
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *;
+    `, [
+      tenantId,
+      sku,
+      nome,
+      categoria || null,
+      preco_venda || 0,
+      preco_custo || 0,
+      quantidade_disponivel || 0,
+      quantidade_reservada || 0,
+      estoque_minimo || 0,
+      is_ativo !== undefined ? is_ativo : true,
+      is_kit || false,
+      variante || null,
+      imagem_url || null
+    ]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Erro ao criar produto:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/produtos/:id - Atualizar produto
+app.put('/api/produtos/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    const {
+      sku,
+      nome,
+      categoria,
+      preco_venda,
+      preco_custo,
+      quantidade_disponivel,
+      quantidade_reservada,
+      estoque_minimo,
+      is_ativo,
+      is_kit,
+      variante,
+      imagem_url
+    } = req.body;
+
+    // Verificar se produto existe e pertence ao tenant
+    const checkResult = await pool.query(
+      'SELECT id FROM estoque.produto WHERE id = $1 AND tenant_id = $2 AND is_deleted = false',
+      [id, tenantId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
+
+    const result = await pool.query(`
+      UPDATE estoque.produto
+      SET 
+        sku = COALESCE($1, sku),
+        nome = COALESCE($2, nome),
+        categoria = $3,
+        preco_venda = COALESCE($4, preco_venda),
+        preco_custo = COALESCE($5, preco_custo),
+        quantidade_disponivel = COALESCE($6, quantidade_disponivel),
+        quantidade_reservada = COALESCE($7, quantidade_reservada),
+        estoque_minimo = COALESCE($8, estoque_minimo),
+        is_ativo = COALESCE($9, is_ativo),
+        is_kit = COALESCE($10, is_kit),
+        variante = $11,
+        imagem_url = $12,
+        updated_at = now()
+      WHERE id = $13 AND tenant_id = $14
+      RETURNING *;
+    `, [
+      sku,
+      nome,
+      categoria,
+      preco_venda,
+      preco_custo,
+      quantidade_disponivel,
+      quantidade_reservada,
+      estoque_minimo,
+      is_ativo,
+      is_kit,
+      variante,
+      imagem_url,
+      id,
+      tenantId
+    ]);
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Erro ao atualizar produto:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/produtos/:id - Hard delete (remover permanentemente)
+app.delete('/api/produtos/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    // Verificar se produto existe e pertence ao tenant
+    const checkResult = await pool.query(
+      'SELECT id FROM estoque.produto WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Produto não encontrado' });
+    }
+
+    // Hard delete - remover permanentemente do banco
+    await pool.query(
+      'DELETE FROM estoque.produto WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+
+    console.log(`✅ Produto ${id} removido permanentemente do banco`);
+    res.status(204).send();
+  } catch (error: any) {
+    console.error('Erro ao deletar produto:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ==================== ROTAS DE EQUIPAMENTOS ====================
+
+// GET /api/equipamentos - Listar equipamentos ativos do tenant
+app.get('/api/equipamentos', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  console.log('🔍 GET /api/equipamentos - Requisição recebida');
+  try {
+    const tenantId = req.user?.tenantId;
+    console.log('🔑 Tenant ID:', tenantId);
+
+    if (!tenantId) {
+      console.log('❌ Tenant não identificado');
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    console.log('📡 Executando query no banco...');
+    const result = await pool.query(`
+      SELECT 
+        id,
+        tenant_id,
+        nome,
+        tipo,
+        marca,
+        modelo,
+        numero_serie,
+        patrimonio,
+        data_aquisicao,
+        valor_aquisicao,
+        vida_util_anos,
+        localizacao,
+        status,
+        observacoes,
+        created_at
+      FROM equipamentos.equipamento
+      WHERE tenant_id = $1 AND is_deleted = false
+      ORDER BY created_at DESC;
+    `, [tenantId]);
+
+    console.log(`✅ Query executada: ${result.rows.length} equipamentos encontrados`);
+    res.json(result.rows);
+  } catch (error: any) {
+    console.error('❌ Erro ao buscar equipamentos:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// GET /api/equipamentos/:id - Buscar equipamento específico
+app.get('/api/equipamentos/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    const result = await pool.query(`
+      SELECT 
+        id,
+        tenant_id,
+        nome,
+        tipo,
+        marca,
+        modelo,
+        numero_serie,
+        patrimonio,
+        data_aquisicao,
+        valor_aquisicao,
+        vida_util_anos,
+        localizacao,
+        status,
+        observacoes,
+        created_at
+      FROM equipamentos.equipamento
+      WHERE id = $1 AND tenant_id = $2 AND is_deleted = false;
+    `, [id, tenantId]);
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Equipamento não encontrado' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Erro ao buscar equipamento:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// POST /api/equipamentos - Criar novo equipamento
+app.post('/api/equipamentos', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    const {
+      nome,
+      tipo,
+      marca,
+      modelo,
+      numero_serie,
+      patrimonio,
+      data_aquisicao,
+      valor_aquisicao,
+      vida_util_anos,
+      localizacao,
+      status,
+      observacoes
+    } = req.body;
+
+    // Validação básica
+    if (!nome || !tipo) {
+      return res.status(400).json({ error: 'Nome e tipo são obrigatórios' });
+    }
+
+    const result = await pool.query(`
+      INSERT INTO equipamentos.equipamento (
+        tenant_id,
+        nome,
+        tipo,
+        marca,
+        modelo,
+        numero_serie,
+        patrimonio,
+        data_aquisicao,
+        valor_aquisicao,
+        vida_util_anos,
+        localizacao,
+        status,
+        observacoes
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+      RETURNING *;
+    `, [
+      tenantId,
+      nome,
+      tipo,
+      marca || null,
+      modelo || null,
+      numero_serie || null,
+      patrimonio || null,
+      data_aquisicao || null,
+      valor_aquisicao || 0,
+      vida_util_anos || 5,
+      localizacao || null,
+      status || 'ativo',
+      observacoes || null
+    ]);
+
+    res.status(201).json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Erro ao criar equipamento:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// PUT /api/equipamentos/:id - Atualizar equipamento
+app.put('/api/equipamentos/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    const {
+      nome,
+      tipo,
+      marca,
+      modelo,
+      numero_serie,
+      patrimonio,
+      data_aquisicao,
+      valor_aquisicao,
+      vida_util_anos,
+      localizacao,
+      status,
+      observacoes
+    } = req.body;
+
+    // Verificar se equipamento existe e pertence ao tenant
+    const checkResult = await pool.query(
+      'SELECT id FROM equipamentos.equipamento WHERE id = $1 AND tenant_id = $2 AND is_deleted = false',
+      [id, tenantId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Equipamento não encontrado' });
+    }
+
+    const result = await pool.query(`
+      UPDATE equipamentos.equipamento
+      SET 
+        nome = COALESCE($1, nome),
+        tipo = COALESCE($2, tipo),
+        marca = $3,
+        modelo = $4,
+        numero_serie = $5,
+        patrimonio = $6,
+        data_aquisicao = $7,
+        valor_aquisicao = COALESCE($8, valor_aquisicao),
+        vida_util_anos = COALESCE($9, vida_util_anos),
+        localizacao = $10,
+        status = COALESCE($11, status),
+        observacoes = $12
+      WHERE id = $13 AND tenant_id = $14
+      RETURNING *;
+    `, [
+      nome,
+      tipo,
+      marca,
+      modelo,
+      numero_serie,
+      patrimonio,
+      data_aquisicao,
+      valor_aquisicao,
+      vida_util_anos,
+      localizacao,
+      status,
+      observacoes,
+      id,
+      tenantId
+    ]);
+
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    console.error('Erro ao atualizar equipamento:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// DELETE /api/equipamentos/:id - Hard delete (remover permanentemente do banco)
+app.delete('/api/equipamentos/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    const { id } = req.params;
+
+    if (!tenantId) {
+      return res.status(401).json({ error: 'Tenant não identificado' });
+    }
+
+    // Verificar se equipamento existe e pertence ao tenant
+    const checkResult = await pool.query(
+      'SELECT id FROM equipamentos.equipamento WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Equipamento não encontrado' });
+    }
+
+    // Hard delete - remover permanentemente do banco
+    await pool.query(
+      'DELETE FROM equipamentos.equipamento WHERE id = $1 AND tenant_id = $2',
+      [id, tenantId]
+    );
+
+    console.log(`✅ Equipamento ${id} removido permanentemente do banco`);
+    res.status(204).send();
+  } catch (error: any) {
+    console.error('Erro ao deletar equipamento:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // ==================== INICIAR SERVIDOR ====================
 
 app.listen(PORT, () => {

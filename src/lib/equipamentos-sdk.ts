@@ -1,56 +1,51 @@
 // equipamentos-sdk.ts
-// SDK para integração com API de Equipamentos
+// SDK para integração com API de Equipamentos (Backend Local)
 
-const DEFAULT_BASE = "https://docker-n8n-webhook.q4xusi.easypanel.host";
+const DEFAULT_BASE = "http://localhost:3001/api";
 
 function safeJson(text: string): any | undefined {
   try { return JSON.parse(text); } catch { return undefined; }
 }
 
-function uuidv4(): string {
-  if (typeof crypto !== "undefined" && crypto.randomUUID) {
-    return crypto.randomUUID();
-  }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
-    const v = c === "x" ? r : (r & 0x3) | 0x8;
-    return v.toString(16);
-  });
-}
-
 export interface EquipamentosSDKOptions {
   tenantId: string;
   baseUrl?: string;
-  apiKey?: string;
+  token?: string;
   timeoutMs?: number;
 }
 
 export class EquipamentosSDK {
   private baseUrl: string;
   private tenantId: string;
-  private apiKey?: string;
+  private token?: string;
   private timeoutMs: number;
 
   constructor(opts: EquipamentosSDKOptions) {
     if (!opts || !opts.tenantId) throw new Error("tenantId é obrigatório");
     this.baseUrl = (opts.baseUrl || DEFAULT_BASE).replace(/\/+$/, "");
     this.tenantId = opts.tenantId;
-    this.apiKey = opts.apiKey;
+    this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? 20000;
   }
 
   buildHeaders(extra?: Record<string, string>): Record<string, string> {
-    const h: Record<string, string> = { 
-      "Content-Type": "application/json", 
-      "Accept": "application/json", 
-      ...(extra || {}) 
+    const h: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      ...(extra || {})
     };
-    if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
+
+    // Usar token JWT se disponível, senão pegar do localStorage
+    const authToken = this.token || localStorage.getItem('token');
+    if (authToken) {
+      h.Authorization = `Bearer ${authToken}`;
+    }
+
     return h;
   }
 
   withTimeout<T>(promise: Promise<T>): Promise<T> {
-    const t = new Promise<never>((_, rej) => 
+    const t = new Promise<never>((_, rej) =>
       setTimeout(() => rej(new Error("Tempo de requisição excedido")), this.timeoutMs)
     );
     return Promise.race([promise, t]);
@@ -58,112 +53,79 @@ export class EquipamentosSDK {
 
   async http(path: string, init: RequestInit): Promise<any> {
     const url = `${this.baseUrl}${path}`;
+    console.debug("🔍 HTTP Request:", init.method, url);
+    console.debug("🔑 Headers:", init.headers);
+
     const res = await this.withTimeout(fetch(url, init));
+
+    console.debug("📡 Response status:", res.status, res.statusText);
+
     const text = await res.text();
+    console.debug("📄 Response body (raw):", text.substring(0, 200));
+
     const json = text ? safeJson(text) : undefined;
+
     if (!res.ok) {
       const msg = (json && (json.message || json.error || json.detail)) || `HTTP ${res.status} ${res.statusText}`;
+      console.error("❌ HTTP Error:", msg);
       throw new Error(msg);
     }
+
+    console.debug("✅ Parsed JSON:", json);
     return json ?? {};
-  }
+  }  // ============ Métodos específicos de Equipamentos ============
 
-  // --------- POST /events ----------
-  async postEvent(
-    eventType: string, 
-    payload: any, 
-    options?: { eventId?: string; occurredAt?: string }
-  ): Promise<any> {
-    const body = {
-      event_id: options?.eventId || uuidv4(),
-      event_type: eventType,
-      tenant_id: this.tenantId,
-      payload: payload || {},
-      occurred_at: options?.occurredAt || new Date().toISOString(),
-    };
+  async getEquipamentos(filters: Record<string, any> = {}): Promise<any[]> {
+    console.debug("🔍 Buscando equipamentos com filtros:", filters);
 
-    return this.http("/webhook/equipamentos/events", {
-      method: "POST",
-      headers: this.buildHeaders(),
-      body: JSON.stringify(body),
-    });
-  }
-
-  // --------- GET /read -------------
-  async read(resource: string, filters: Record<string, any> = {}): Promise<any[]> {
-    const params = new URLSearchParams();
-
-    params.set("tenant_id", this.tenantId);
-    params.set("resource", resource);
-
-    // Filtros específicos
-    for (const [key, value] of Object.entries(filters)) {
-      if (value != null) {
-        params.set(key, String(value));
-      }
-    }
-
-    const url = `${this.baseUrl}/webhook/equipamentos/read?${params.toString()}`;
-    console.debug("🔍 Buscando equipamentos:", url);
-    
-    const result = await this.http(url.replace(this.baseUrl, ""), {
+    const result = await this.http("/equipamentos", {
       method: "GET",
       headers: this.buildHeaders(),
     });
-    
-    console.debug(`✅ ${resource}:`, result?.length || 0, "itens");
-    return result;
+
+    console.debug(`✅ Equipamentos recebidos:`, result?.length || 0, "itens");
+    return Array.isArray(result) ? result : [];
   }
 
-  // ============ Métodos específicos de Equipamentos ============
-  
-  async getEquipamentos(filters: Record<string, any> = {}) {
-    return this.read("equipamento", filters);
+  async getEquipamento(id: string): Promise<any> {
+    return this.http(`/equipamentos/${id}`, {
+      method: "GET",
+      headers: this.buildHeaders(),
+    });
   }
 
-  async createEquipamento(equipamentoData: any) {
-    return this.postEvent("equipamento.upsert", equipamentoData);
+  async createEquipamento(equipamentoData: any): Promise<any> {
+    console.log("� Criando equipamento:", equipamentoData);
+
+    return this.http("/equipamentos", {
+      method: "POST",
+      headers: this.buildHeaders(),
+      body: JSON.stringify(equipamentoData),
+    });
   }
 
-  async updateEquipamento(equipamentoData: any) {
-    return this.postEvent("equipamento.upsert", equipamentoData);
+  async updateEquipamento(id: string, equipamentoData: any): Promise<any> {
+    console.log("📝 Atualizando equipamento:", id, equipamentoData);
+
+    return this.http(`/equipamentos/${id}`, {
+      method: "PUT",
+      headers: this.buildHeaders(),
+      body: JSON.stringify(equipamentoData),
+    });
   }
 
-  async deleteEquipamento(id: string) {
-    return this.postEvent("equipamento.delete", { id });
-  }
+  async deleteEquipamento(id: string): Promise<void> {
+    console.log("🗑️ Deletando equipamento:", id);
+    console.log("📡 tenant_id:", this.tenantId);
+    console.log("🌐 Endpoint:", `${this.baseUrl}/equipamentos/${id}`);
 
-  async getManutencoes(equipamentoId?: string) {
-    const filters = equipamentoId ? { equipamento_id: equipamentoId } : {};
-    return this.read("manutencao", filters);
-  }
+    await this.http(`/equipamentos/${id}`, {
+      method: "DELETE",
+      headers: this.buildHeaders(),
+    });
 
-  async createManutencao(manutencaoData: any) {
-    return this.postEvent("manutencao.upsert", manutencaoData);
-  }
-
-  async getMovimentacoes(equipamentoId?: string) {
-    const filters = equipamentoId ? { equipamento_id: equipamentoId } : {};
-    return this.read("movimentacao", filters);
-  }
-
-  async createMovimentacao(movimentacaoData: any) {
-    return this.postEvent("movimentacao.upsert", movimentacaoData);
-  }
-
-  async getDepreciacoes(equipamentoId?: string) {
-    const filters = equipamentoId ? { equipamento_id: equipamentoId } : {};
-    return this.read("depreciacao", filters);
-  }
-
-  async createDepreciacao(depreciacaoData: any) {
-    return this.postEvent("depreciacao.upsert", depreciacaoData);
+    console.log("✅ Equipamento deletado com sucesso");
   }
 }
-
-// Create a default instance
-export const equipamentosSDK = new EquipamentosSDK({ 
-  tenantId: import.meta.env.VITE_FINANCEIRO_TENANT_ID || "obsidian" 
-});
 
 export default EquipamentosSDK;

@@ -1,7 +1,7 @@
 // estoque-sdk.ts
-// SDK para integração com API de Estoque E-commerce
+// SDK para integração com API de Estoque (Backend Local)
 
-const DEFAULT_BASE = "https://docker-n8n-webhook.q4xusi.easypanel.host";
+const DEFAULT_BASE = "http://localhost:3001/api";
 
 function safeJson(text: string): any | undefined {
   try { return JSON.parse(text); } catch { return undefined; }
@@ -10,7 +10,7 @@ function safeJson(text: string): any | undefined {
 export interface EstoqueSDKOptions {
   tenantId: string;
   baseUrl?: string;
-  apiKey?: string;
+  token?: string;
   timeoutMs?: number;
 }
 
@@ -46,14 +46,14 @@ export interface EstoqueFilters {
 export class EstoqueSDK {
   private baseUrl: string;
   private tenantId: string;
-  private apiKey?: string;
+  private token?: string;
   private timeoutMs: number;
 
   constructor(opts: EstoqueSDKOptions) {
     if (!opts || !opts.tenantId) throw new Error("tenantId é obrigatório");
     this.baseUrl = (opts.baseUrl || DEFAULT_BASE).replace(/\/+$/, "");
     this.tenantId = opts.tenantId;
-    this.apiKey = opts.apiKey;
+    this.token = opts.token;
     this.timeoutMs = opts.timeoutMs ?? 20000;
   }
 
@@ -63,7 +63,13 @@ export class EstoqueSDK {
       "Accept": "application/json", 
       ...(extra || {}) 
     };
-    if (this.apiKey) h.Authorization = `Bearer ${this.apiKey}`;
+    
+    // Usar token JWT se disponível, senão pegar do localStorage
+    const authToken = this.token || localStorage.getItem('token');
+    if (authToken) {
+      h.Authorization = `Bearer ${authToken}`;
+    }
+    
     return h;
   }
 
@@ -85,37 +91,41 @@ export class EstoqueSDK {
     return json ?? {};
   }
 
-  // GET /webhook/estoque_ecomm
+  // GET /api/produtos
   async getProdutos(filters: EstoqueFilters = {}): Promise<ProdutoEstoque[]> {
-    const params = new URLSearchParams();
+    console.debug("🔍 Buscando produtos do estoque");
     
-    params.set("tenant_id", this.tenantId);
-    
-    // Filtros opcionais
-    if (filters.q) params.set("q", filters.q);
-    if (filters.sku) params.set("sku", filters.sku);
-    if (filters.only_active !== undefined) params.set("only_active", String(filters.only_active));
-    if (filters.include_kits !== undefined) params.set("include_kits", String(filters.include_kits));
-    if (filters.updated_since) params.set("updated_since", filters.updated_since);
-    if (filters.page) params.set("page", String(filters.page));
-    if (filters.page_size) params.set("page_size", String(filters.page_size));
-
-    const url = `${this.baseUrl}/webhook/estoque_ecomm?${params.toString()}`;
-    console.debug("🔍 Buscando produtos do estoque:", url);
-    
-    const result = await this.http(url, {
+    const result = await this.http(`${this.baseUrl}/produtos`, {
       method: "GET",
       headers: this.buildHeaders(),
     });
     
     console.debug(`✅ Produtos:`, result?.length || 0, "itens");
-    return result;
+    return Array.isArray(result) ? result : [];
+  }
+
+  async createProduto(produtoData: any): Promise<any> {
+    return this.http(`${this.baseUrl}/produtos`, {
+      method: "POST",
+      headers: this.buildHeaders(),
+      body: JSON.stringify(produtoData),
+    });
+  }
+
+  async updateProduto(id: string, produtoData: any): Promise<any> {
+    return this.http(`${this.baseUrl}/produtos/${id}`, {
+      method: "PUT",
+      headers: this.buildHeaders(),
+      body: JSON.stringify(produtoData),
+    });
+  }
+
+  async deleteProduto(id: string): Promise<void> {
+    await this.http(`${this.baseUrl}/produtos/${id}`, {
+      method: "DELETE",
+      headers: this.buildHeaders(),
+    });
   }
 }
-
-// Create a default instance
-export const estoqueSDK = new EstoqueSDK({ 
-  tenantId: import.meta.env.VITE_FINANCEIRO_TENANT_ID || "OPUS" 
-});
 
 export default EstoqueSDK;

@@ -22,8 +22,8 @@ export const pool = new Pool({
 // Testa a conexão ao iniciar e define search_path
 pool.on('connect', async (client) => {
   try {
-    await client.query('SET search_path TO financeiro, public');
-    console.log('✅ Conectado ao PostgreSQL com search_path=financeiro,public');
+    await client.query('SET search_path TO financeiro, equipamentos, estoque, public');
+    console.log('✅ Conectado ao PostgreSQL com search_path=financeiro,equipamentos,estoque,public');
   } catch (error) {
     console.error('❌ Erro ao configurar search_path:', error);
   }
