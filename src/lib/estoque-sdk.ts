@@ -58,23 +58,23 @@ export class EstoqueSDK {
   }
 
   buildHeaders(extra?: Record<string, string>): Record<string, string> {
-    const h: Record<string, string> = { 
-      "Content-Type": "application/json", 
-      "Accept": "application/json", 
-      ...(extra || {}) 
+    const h: Record<string, string> = {
+      "Content-Type": "application/json",
+      "Accept": "application/json",
+      ...(extra || {})
     };
-    
+
     // Usar token JWT se disponível, senão pegar do localStorage
     const authToken = this.token || localStorage.getItem('token');
     if (authToken) {
       h.Authorization = `Bearer ${authToken}`;
     }
-    
+
     return h;
   }
 
   withTimeout<T>(promise: Promise<T>): Promise<T> {
-    const t = new Promise<never>((_, rej) => 
+    const t = new Promise<never>((_, rej) =>
       setTimeout(() => rej(new Error("Tempo de requisição excedido")), this.timeoutMs)
     );
     return Promise.race([promise, t]);
@@ -94,12 +94,12 @@ export class EstoqueSDK {
   // GET /api/produtos
   async getProdutos(filters: EstoqueFilters = {}): Promise<ProdutoEstoque[]> {
     console.debug("🔍 Buscando produtos do estoque");
-    
+
     const result = await this.http(`${this.baseUrl}/produtos`, {
       method: "GET",
       headers: this.buildHeaders(),
     });
-    
+
     console.debug(`✅ Produtos:`, result?.length || 0, "itens");
     return Array.isArray(result) ? result : [];
   }
