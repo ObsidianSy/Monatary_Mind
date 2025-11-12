@@ -95,30 +95,49 @@ export default function CartoesPage() {
   // ✅ CORRIGIDO: Backend espera competencia no formato YYYY-MM-DD completo
   const monthCompetenciaAll = format(new Date(), 'yyyy-MM-01');
 
+  // Buscar itens do mês atual para exibir na fatura
   const { items: allItemsThisMonth } = useInvoiceItems(undefined, {
-    competencia: monthCompetenciaAll, // Já está no formato correto YYYY-MM-DD
+    competencia: monthCompetenciaAll, // Apenas mês atual
     order: "data_compra.desc",
     limit: 500
   });
 
+  // ✅ NOVO: Buscar TODOS os itens (de todos os meses) para calcular limite usado
+  const { items: allItemsAllMonths } = useInvoiceItems(undefined, {
+    order: "data_compra.desc",
+    limit: 1000 // Sem filtro de competência = busca tudo
+  });
+
   const usageByCard = useMemo(() => {
     const map: Record<string, number> = {};
+    const processedCompras = new Set<string>(); // Rastrear compras já processadas
 
-    (allItemsThisMonth || []).forEach((i) => {
-      // Validar que a competência do item corresponde ao mês atual
-      const itemCompetencia = typeof i.competencia === 'string'
-        ? i.competencia.substring(0, 7)
-        : format(new Date(i.competencia), 'yyyy-MM-01');
-
-      if (itemCompetencia === monthCompetenciaAll.substring(0, 7)) {
-        const v = typeof i.valor === 'string' ? parseFloat(i.valor) : (i.valor || 0);
-        if (!i.cartao_id) return;
-        map[i.cartao_id] = (map[i.cartao_id] || 0) + v;
+    // ✅ CORRIGIDO: Usar TODOS os itens (não só do mês atual)
+    (allItemsAllMonths || []).forEach((i) => {
+      const v = typeof i.valor === 'string' ? parseFloat(i.valor) : (i.valor || 0);
+      if (!i.cartao_id) return;
+      
+      // ✅ Usar descrição base (sem número de parcela) + data_compra como chave única
+      const descricaoBase = i.descricao.replace(/\s*\(\d+\/\d+\)$/, ''); // Remove " (1/3)"
+      const chaveUnica = `${i.cartao_id}-${descricaoBase}-${i.data_compra}`;
+      
+      // Se já processamos esta compra, pular
+      if (processedCompras.has(chaveUnica)) {
+        return;
       }
+      
+      // Marcar como processada
+      processedCompras.add(chaveUnica);
+      
+      // Calcular valor total da compra (parcela × total_parcelas)
+      const parcelaTotal = i.parcela_total || 1;
+      const valorTotalCompra = v * parcelaTotal;
+      
+      map[i.cartao_id] = (map[i.cartao_id] || 0) + valorTotalCompra;
     });
 
     return map;
-  }, [allItemsThisMonth, monthCompetenciaAll]);
+  }, [allItemsAllMonths]);
 
   const getUsagePercentage = (used: number, limit: string | number): number => {
     const limitNum = typeof limit === 'string' ? parseFloat(limit) : limit;
@@ -144,12 +163,8 @@ export default function CartoesPage() {
   };
 
   const getCardUsage = (card: CreditCard) => {
-    const inv = getCurrentInvoice(card);
-    // Se a fatura estiver fechada/paga e possuir valor_fechado, usar esse valor
-    const vf = inv?.valor_fechado as any;
-    const closedValue = typeof vf === 'string' ? parseFloat(vf || '0') : (vf || 0);
-    if (closedValue > 0) return closedValue;
-    // Caso contrário, somar itens do mês atual para este cartão
+    // ✅ CORRIGIDO: Sempre usar usageByCard que calcula o TOTAL de todas as parcelas futuras
+    // (não apenas o valor da fatura do mês atual)
     return usageByCard[card.id] ?? 0;
   };
   // Hooks derived from current invoice must be declared before any early return
@@ -322,6 +337,26 @@ export default function CartoesPage() {
       });
   }, [invoices]);
 
+  // ✅ Calcular valor da próxima fatura (próximo mês) somando itens
+  const nextInvoiceValue = useMemo(() => {
+    if (!selectedCard) return 0;
+    
+    const nextMonth = new Date();
+    nextMonth.setMonth(nextMonth.getMonth() + 1);
+    const nextCompetencia = formatCompetencia(nextMonth);
+    
+    const nextMonthItems = (allItemsAllMonths || []).filter(i => {
+      if (!i.cartao_id || i.cartao_id !== selectedCard.id) return false;
+      const comp = formatCompetencia(i.competencia || "");
+      return comp === nextCompetencia;
+    });
+    
+    return nextMonthItems.reduce((sum, i) => {
+      const v = typeof i.valor === "string" ? parseFloat(i.valor) : i.valor;
+      return sum + (v || 0);
+    }, 0);
+  }, [allItemsAllMonths, selectedCard]);
+
   // DEBUG: Remover após validação
   // console.log("DEBUG Cartões - Compras encontradas:", {
   //   cartaoId: selectedCard?.id,
@@ -389,19 +424,20 @@ export default function CartoesPage() {
   // Mover todos os cálculos e useMemos para ANTES de qualquer render condicional
   const limite = selectedCard && typeof selectedCard.limite_total === 'string' ?
     parseFloat(selectedCard.limite_total) : (typeof selectedCard?.limite_total === 'number' ? selectedCard.limite_total : 0);
-  const usage = usedPending;
+  
+  // ✅ CORRIGIDO: Usar getCardUsage() que calcula TODAS as parcelas futuras
+  const usage = selectedCard ? getCardUsage(selectedCard) : 0;
+  
   const usagePercentage = selectedCard ? getUsagePercentage(usage, limite) : 0;
   const disponivel = Number(limite) - usage;
   const payingAccount = selectedCard ? activeAccounts.find(acc => acc.id === selectedCard.conta_pagamento_id) : null;
 
-  // Próxima fatura (próximo mês)
+  // ✅ Valor da fatura ATUAL (apenas mês de novembro) - para exibir no card "Fatura Atual"
+  const currentMonthInvoiceValue = usedPending;
+
+  // Calcular próximo mês para exibição
   const nextMonth = new Date();
   nextMonth.setMonth(nextMonth.getMonth() + 1);
-  const nextCompetencia = formatCompetencia(nextMonth);
-  const nextInvoice = invoices.find(inv => formatCompetencia(inv.competencia) === nextCompetencia);
-  const nextInvoiceValue = nextInvoice?.valor_total
-    ? (typeof nextInvoice.valor_total === 'string' ? parseFloat(nextInvoice.valor_total) : nextInvoice.valor_total)
-    : 0;
 
   // Hooks moved above early returns: filteredItems, last12MonthsInvoices
 
@@ -551,19 +587,21 @@ export default function CartoesPage() {
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
-              {currentInvoice ? (
+              {/* ✅ CORRIGIDO: Mostrar fatura mesmo sem registro no banco (baseado nos itens) */}
+              {currentInvoice || currentMonthInvoiceValue > 0 ? (
                 <>
                   <div className="text-center space-y-2">
-                    <ValueDisplay value={usage} size="xl" />
+                    {/* ✅ CORRIGIDO: Mostrar valor da fatura ATUAL (novembro apenas) */}
+                    <ValueDisplay value={currentMonthInvoiceValue} size="xl" />
                     <StatusBadge
                       status={
-                        currentInvoice.status === "paga" ? "success" :
-                          currentInvoice.status === "fechada" ? "warning" :
+                        currentInvoice?.status === "paga" ? "success" :
+                          currentInvoice?.status === "fechada" ? "warning" :
                             "error"
                       }
                       label={
-                        currentInvoice.status === "paga" ? "✓ Paga" :
-                          currentInvoice.status === "fechada" ? "⏸ Fechada" :
+                        currentInvoice?.status === "paga" ? "✓ Paga" :
+                          currentInvoice?.status === "fechada" ? "⏸ Fechada" :
                             "⏳ Aberta"
                       }
                       size="sm"
@@ -572,10 +610,12 @@ export default function CartoesPage() {
                   </div>
                   <Separator />
                   <div className="space-y-2 text-sm">
-                    <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">Vencimento:</span>
-                      <span className="font-medium">{formatDateYmdToBr(currentInvoice.data_vencimento)}</span>
-                    </div>
+                    {currentInvoice?.data_vencimento && (
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Vencimento:</span>
+                        <span className="font-medium">{formatDateYmdToBr(currentInvoice.data_vencimento)}</span>
+                      </div>
+                    )}
                     {daysUntilDue !== null && daysUntilDue >= 0 && (
                       <div className="flex items-center justify-between">
                         <span className="text-muted-foreground">Faltam:</span>

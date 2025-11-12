@@ -136,6 +136,7 @@ export default function AddPurchaseModal({
     }
 
     const valorTotal = parseFloat(form.valor);
+    // ✅ DIVIDE o valor total pelas parcelas
     const valorParcela = valorTotal / form.parcela_total;
     const competenciaInicial = getCompetencia(form.data_compra, form.cartao_id);
 
@@ -196,6 +197,7 @@ export default function AddPurchaseModal({
 
     // Preparar dados para API
     const valorTotal = parseFloat(form.valor);
+    // ✅ Divide o valor total pelas parcelas (ex: R$ 422,01 ÷ 3 = R$ 140,67 por parcela)
     const valorParcela = form.tipo_compra === "parcelada" ? valorTotal / form.parcela_total : valorTotal;
 
     console.log('🔍 Enviando compra - Data original:', {
