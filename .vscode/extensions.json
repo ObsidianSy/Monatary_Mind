@@ -1,0 +1,23 @@
+{
+  "recommendations": [
+    "dbaeumer.vscode-eslint",
+    "esbenp.prettier-vscode",
+    "bradlc.vscode-tailwindcss",
+    "Prisma.prisma",
+    "eamodio.gitlens",
+    "GitHub.vscode-pull-request-github",
+    "mtxr.sqltools",
+    "mtxr.sqltools-driver-pg",
+    "Orta.vscode-jest",
+    "humao.rest-client",
+    "ms-azuretools.vscode-docker",
+    "SonarSource.sonarlint-vscode",
+    "editorconfig.editorconfig",
+    "Gruntfuggly.todo-tree",
+    "aaron-bond.better-comments",
+    "alefragnani.project-manager",
+    "ms-vsliveshare.vsliveshare",
+    "wix.vscode-import-cost",
+    "christian-kohler.path-intellisense"
+  ]
+}

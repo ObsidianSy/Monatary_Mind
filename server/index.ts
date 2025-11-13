@@ -1493,6 +1493,8 @@ app.get('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: R
 // Criar ou atualizar cartão
 app.post('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
+    // Log temporário: inspecionar payload recebido para debugar constraints
+    console.log('POST /api/cartoes - payload recebido:', req.body);
     const {
       id,
       apelido,
@@ -1506,10 +1508,22 @@ app.post('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: 
     } = req.body;
 
     // Validação: campos obrigatórios apenas para INSERT
-    if (!id && (!apelido || !dia_fechamento || !dia_vencimento)) {
+    // Use checagem explícita (== null) para não tratar 0 como ausente
+    const parsedDiaFech = dia_fechamento == null ? undefined : parseInt(String(dia_fechamento), 10);
+    const parsedDiaVenc = dia_vencimento == null ? undefined : parseInt(String(dia_vencimento), 10);
+
+    if (!id && (apelido == null || parsedDiaFech == null || parsedDiaVenc == null)) {
       return res.status(400).json({
         error: 'Apelido, dia de fechamento e vencimento são obrigatórios'
       });
+    }
+
+    // Validar intervalos para evitar erro de constraint no DB
+    if (parsedDiaFech !== undefined && (isNaN(parsedDiaFech) || parsedDiaFech < 1 || parsedDiaFech > 31)) {
+      return res.status(400).json({ error: 'Dia de fechamento deve ser um número entre 1 e 31' });
+    }
+    if (parsedDiaVenc !== undefined && (isNaN(parsedDiaVenc) || parsedDiaVenc < 1 || parsedDiaVenc > 31)) {
+      return res.status(400).json({ error: 'Dia de vencimento deve ser um número entre 1 e 31' });
     }
 
     let result;
@@ -1532,12 +1546,20 @@ app.post('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: 
         values.push(limite_total);
       }
       if (dia_fechamento !== undefined) {
+        const parsed = parseInt(String(dia_fechamento), 10);
+        if (isNaN(parsed) || parsed < 1 || parsed > 31) {
+          return res.status(400).json({ error: 'Dia de fechamento deve ser um número entre 1 e 31' });
+        }
         updates.push(`dia_fechamento = $${paramCount++}`);
-        values.push(dia_fechamento);
+        values.push(parsed);
       }
       if (dia_vencimento !== undefined) {
+        const parsed = parseInt(String(dia_vencimento), 10);
+        if (isNaN(parsed) || parsed < 1 || parsed > 31) {
+          return res.status(400).json({ error: 'Dia de vencimento deve ser um número entre 1 e 31' });
+        }
         updates.push(`dia_vencimento = $${paramCount++}`);
-        values.push(dia_vencimento);
+        values.push(parsed);
       }
       if (conta_pagamento_id !== undefined) {
         updates.push(`conta_pagamento_id = $${paramCount++}`);
@@ -1580,6 +1602,11 @@ app.post('/api/cartoes', authenticateToken(pool), async (req: AuthRequest, res: 
     res.json(result.rows[0]);
   } catch (error: any) {
     console.error('Erro ao salvar cartão:', error);
+    // Se for violação de CHECK do Postgres (codigo 23514), retornar 400 com detalhe
+    if (error && error.code === '23514') {
+      const detail = error.detail || error.message || 'Violação de restrição no banco de dados';
+      return res.status(400).json({ error: detail, constraint: error.constraint });
+    }
     res.status(500).json({ error: error.message });
   }
 });

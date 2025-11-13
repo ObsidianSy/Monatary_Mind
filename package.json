@@ -18,7 +18,9 @@
     "seed-auth": "tsx server/seed-auth.ts",
     "migrate": "psql -h $DB_HOST -U $DB_USER -d $DB_NAME -f database/init-complete.sql",
     "backup": "bash backup.sh",
-    "deploy": "bash deploy.sh"
+    "deploy": "bash deploy.sh",
+    "cypress:open": "cypress open",
+    "cypress:run": "cypress run"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
@@ -94,6 +96,7 @@
     "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
+    "cypress": "^15.6.0",
     "eslint": "^9.32.0",
     "eslint-plugin-react-hooks": "^5.2.0",
     "eslint-plugin-react-refresh": "^0.4.20",
