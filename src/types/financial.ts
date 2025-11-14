@@ -37,6 +37,7 @@ export interface CreditCard {
   tenant_id?: string;
   apelido: string;
   bandeira: "visa" | "mastercard" | "elo" | "amex" | "hipercard";
+  numero?: string; // Últimos 4 dígitos ou número completo (opcional)
   limite_total: string | number;
   dia_fechamento: number;
   dia_vencimento: number;
