@@ -1,18 +1,30 @@
 import { format } from "date-fns";
 import { useInvoiceItems } from "@/hooks/useFinancialData";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Button } from "@/components/ui/button";
 import { usePrivacy } from "@/contexts/PrivacyContext";
 import { censorValue } from "@/lib/utils";
 import { formatDateYmdToBr } from "@/lib/date"; // ✅ Helpers TZ-safe
 import { useEffect } from "react";
+import { Edit, Trash2 } from "lucide-react";
 
 interface InvoiceItemsListProps {
   invoiceId: string;
   categories: any[];
   formatCurrency: (v: number) => string;
+  onEditItem?: (item: any) => void;
+  onDeleteItem?: (item: any) => void;
+  showActions?: boolean;
 }
 
-export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: InvoiceItemsListProps) {
+export function InvoiceItemsList({ 
+  invoiceId, 
+  categories, 
+  formatCurrency, 
+  onEditItem, 
+  onDeleteItem,
+  showActions = false 
+}: InvoiceItemsListProps) {
   const { items, loading } = useInvoiceItems(invoiceId);
   const { isValuesCensored } = usePrivacy();
 
@@ -66,7 +78,7 @@ export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: Invo
         const displayValue = censorValue(formatCurrency(Number(valor)), isValuesCensored);
 
         return (
-          <div key={item.id} className="flex justify-between items-center py-2 px-3 bg-muted/30 rounded-md border border-border/40">
+          <div key={item.id} className="flex justify-between items-center py-2 px-3 bg-muted/30 rounded-md border border-border/40 gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate">{item.descricao}</p>
               <p className="text-xs text-muted-foreground">
@@ -76,7 +88,28 @@ export function InvoiceItemsList({ invoiceId, categories, formatCurrency }: Invo
                 {formatDateYmdToBr(item.data_compra)}
               </p>
             </div>
-            <p className="text-sm font-semibold ml-3 flex-shrink-0">{displayValue}</p>
+            <p className="text-sm font-semibold flex-shrink-0">{displayValue}</p>
+            
+            {showActions && (
+              <div className="flex gap-1 flex-shrink-0">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0"
+                  onClick={() => onEditItem?.(item)}
+                >
+                  <Edit className="w-3.5 h-3.5" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                  onClick={() => onDeleteItem?.(item)}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            )}
           </div>
         );
       })}

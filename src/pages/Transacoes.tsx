@@ -3,6 +3,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { format, startOfMonth, endOfMonth, addMonths } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -155,8 +159,14 @@ export default function Transacoes() {
     refresh: refreshRecurrences,
     pauseRecurrence,
     resumeRecurrence,
-    deleteRecurrence
+    deleteRecurrence,
+    updateRecurrence,
+    posting: postingRecurrence
   } = useRecurrences();
+
+  // Estado para edição de recorrência
+  const [isEditRecurrenceModalOpen, setIsEditRecurrenceModalOpen] = useState(false);
+  const [editingRecurrence, setEditingRecurrence] = useState<any | null>(null);
 
   // Hook para gerar contas do mês
   const { generateMonthFromRecurrences } = useRecurrenceExpander();
@@ -844,11 +854,8 @@ export default function Transacoes() {
                               variant="ghost"
                               size="sm"
                               onClick={() => {
-                                // TODO: Abrir modal de edição
-                                toast({
-                                  title: "Em desenvolvimento",
-                                  description: "Funcionalidade de edição em breve.",
-                                });
+                                setEditingRecurrence(recorrencia);
+                                setIsEditRecurrenceModalOpen(true);
                               }}
                             >
                               <Edit className="w-4 h-4" />
@@ -934,6 +941,153 @@ export default function Transacoes() {
         transaction={confirmTransactionData}
         onConfirm={confirmTransactionData?.id ? handleConfirmTransaction : handleConfirmRecurrence}
       />
+
+      {/* Modal de Edição de Recorrência */}
+      {editingRecurrence && (
+        <Dialog open={isEditRecurrenceModalOpen} onOpenChange={setIsEditRecurrenceModalOpen}>
+          <DialogContent className="sm:max-w-[600px]">
+            <DialogHeader>
+              <DialogTitle>Editar Recorrência</DialogTitle>
+              <DialogDescription>
+                Atualize os dados da recorrência "{editingRecurrence.descricao}"
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={async (e) => {
+              e.preventDefault();
+              const formData = new FormData(e.currentTarget);
+              
+              try {
+                await updateRecurrence(editingRecurrence.id, {
+                  descricao: formData.get('descricao') as string,
+                  valor: parseFloat(formData.get('valor') as string),
+                  conta_id: formData.get('conta_id') as string,
+                  categoria_id: formData.get('categoria_id') as string,
+                  frequencia: formData.get('frequencia') as any,
+                  dia_vencimento: parseInt(formData.get('dia_vencimento') as string) || undefined,
+                });
+                
+                toast({
+                  title: "Recorrência atualizada",
+                  description: "A recorrência foi atualizada com sucesso.",
+                });
+                
+                setIsEditRecurrenceModalOpen(false);
+                setEditingRecurrence(null);
+                refreshRecurrences();
+              } catch (error: any) {
+                toast({
+                  title: "Erro ao atualizar",
+                  description: error.message || "Não foi possível atualizar a recorrência.",
+                  variant: "destructive",
+                });
+              }
+            }}>
+              <div className="grid gap-4 py-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="descricao">Descrição</Label>
+                  <Input
+                    id="descricao"
+                    name="descricao"
+                    defaultValue={editingRecurrence.descricao}
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="valor">Valor</Label>
+                  <Input
+                    id="valor"
+                    name="valor"
+                    type="number"
+                    step="0.01"
+                    defaultValue={typeof editingRecurrence.valor === 'string' ? editingRecurrence.valor : editingRecurrence.valor.toString()}
+                    required
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="conta_id">Conta</Label>
+                  <Select name="conta_id" defaultValue={editingRecurrence.conta_id} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a conta" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {accounts.map((conta) => (
+                        <SelectItem key={conta.id} value={conta.id}>
+                          {conta.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="categoria_id">Categoria</Label>
+                  <Select name="categoria_id" defaultValue={editingRecurrence.categoria_id || editingRecurrence.subcategoria_id} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a categoria" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {categories.map((cat) => (
+                        <SelectItem key={cat.id} value={cat.id}>
+                          {cat.nome}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="frequencia">Frequência</Label>
+                  <Select name="frequencia" defaultValue={editingRecurrence.frequencia} required>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Selecione a frequência" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="diario">Diário</SelectItem>
+                      <SelectItem value="semanal">Semanal</SelectItem>
+                      <SelectItem value="quinzenal">Quinzenal</SelectItem>
+                      <SelectItem value="mensal">Mensal</SelectItem>
+                      <SelectItem value="anual">Anual</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="dia_vencimento">Dia do Vencimento (opcional)</Label>
+                  <Input
+                    id="dia_vencimento"
+                    name="dia_vencimento"
+                    type="number"
+                    min="1"
+                    max="31"
+                    defaultValue={editingRecurrence.dia_vencimento || ''}
+                    placeholder="Ex: 10"
+                  />
+                </div>
+              </div>
+
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => {
+                    setIsEditRecurrenceModalOpen(false);
+                    setEditingRecurrence(null);
+                  }}
+                  disabled={postingRecurrence}
+                >
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={postingRecurrence}>
+                  {postingRecurrence && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                  Salvar
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

@@ -900,6 +900,15 @@ export default function CartoesPage() {
                           setInvoiceToPayId(invoice.id);
                           setIsPayInvoiceModalOpen(true);
                         }}
+                        onEditItem={(item) => {
+                          setSelectedPurchase(item);
+                          setIsEditPurchaseModalOpen(true);
+                        }}
+                        onDeleteItem={(item) => {
+                          setSelectedPurchase(item);
+                          setIsDeletePurchaseModalOpen(true);
+                        }}
+                        showActions={true}
                       />
                     ))}
                   </Accordion>

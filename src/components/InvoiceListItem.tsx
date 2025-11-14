@@ -18,13 +18,19 @@ interface InvoiceListItemProps {
   categories: any[];
   formatCurrency: (v: number) => string;
   onPayInvoice: () => void;
+  onEditItem?: (item: any) => void;
+  onDeleteItem?: (item: any) => void;
+  showActions?: boolean;
 }
 
 export function InvoiceListItem({ 
   invoice, 
   categories, 
   formatCurrency, 
-  onPayInvoice 
+  onPayInvoice,
+  onEditItem,
+  onDeleteItem,
+  showActions = false
 }: InvoiceListItemProps) {
   const { isValuesCensored } = usePrivacy();
   
@@ -113,6 +119,9 @@ export function InvoiceListItem({
           invoiceId={invoice.id} 
           categories={categories}
           formatCurrency={formatCurrency}
+          onEditItem={onEditItem}
+          onDeleteItem={onDeleteItem}
+          showActions={showActions}
         />
       </AccordionContent>
     </AccordionItem>
