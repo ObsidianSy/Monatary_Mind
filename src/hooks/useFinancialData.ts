@@ -467,8 +467,25 @@ export function useCreditPurchases() {
     return postEvent("fatura_item.upsert", purchaseData);
   };
 
+  const updatePurchase = async (id: string, purchaseData: {
+    descricao?: string;
+    valor?: number;
+    data_compra?: string;
+    categoria_id?: string;
+    parcela_numero?: number;
+    parcela_total?: number;
+  }) => {
+    return postEvent("fatura_item.upsert", { id, ...purchaseData });
+  };
+
+  const deletePurchase = async (id: string) => {
+    return postEvent("fatura_item.upsert", { id, is_deleted: true });
+  };
+
   return {
     createPurchase,
+    updatePurchase,
+    deletePurchase,
     posting
   };
 }

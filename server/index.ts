@@ -1856,57 +1856,60 @@ app.post('/api/compras', authenticateToken(pool), async (req: AuthRequest, res: 
       parcela_total,
       competencia,
       observacoes,
+      is_deleted,
       tenantId = req.user?.tenantId
     } = req.body;
 
     console.log('🛒 POST /api/compras - Dados recebidos:', {
-      cartao_id, categoria_id, descricao, valor, data_compra,
-      parcela_numero, parcela_total, competencia,
-      data_compra_tipo: typeof data_compra,
-      data_compra_parseada: data_compra ? new Date(data_compra) : null
+      id, cartao_id, categoria_id, descricao, valor, data_compra,
+      parcela_numero, parcela_total, competencia, is_deleted
     });
 
-    console.log(`🔥 CRIANDO COMPRA: "${descricao}" - Parcela ${parcela_numero || 1}/${parcela_total || 1}`);
+    // Se for UPDATE ou DELETE (id presente), pular validações de campos obrigatórios
+    if (!id) {
+      // Validações apenas para INSERT
+      console.log(`🔥 CRIANDO COMPRA: "${descricao}" - Parcela ${parcela_numero || 1}/${parcela_total || 1}`);
 
-    if (!cartao_id || !descricao || !valor || !data_compra) {
-      console.error('❌ Validacao falhou - campos obrigatorios faltando');
-      return res.status(400).json({
-        error: 'cartao_id, descricao, valor e data_compra são obrigatórios'
-      });
-    }
+      if (!cartao_id || !descricao || !valor || !data_compra) {
+        console.error('❌ Validacao falhou - campos obrigatorios faltando');
+        return res.status(400).json({
+          error: 'cartao_id, descricao, valor e data_compra são obrigatórios'
+        });
+      }
 
-    // Validar valor positivo
-    if (valor <= 0) {
-      console.error('❌ Validacao falhou - valor <= 0');
-      return res.status(400).json({
-        error: 'Valor deve ser maior que zero'
-      });
-    }
+      // Validar valor positivo
+      if (valor <= 0) {
+        console.error('❌ Validacao falhou - valor <= 0');
+        return res.status(400).json({
+          error: 'Valor deve ser maior que zero'
+        });
+      }
 
-    // Validar parcelas
-    if (parcela_numero && parcela_numero < 1) {
-      console.error('❌ Validacao falhou - parcela_numero < 1');
-      return res.status(400).json({
-        error: 'Número da parcela deve ser maior ou igual a 1'
-      });
-    }
+      // Validar parcelas
+      if (parcela_numero && parcela_numero < 1) {
+        console.error('❌ Validacao falhou - parcela_numero < 1');
+        return res.status(400).json({
+          error: 'Número da parcela deve ser maior ou igual a 1'
+        });
+      }
 
-    if (parcela_total && parcela_total < 1) {
-      console.error('❌ Validacao falhou - parcela_total < 1');
-      return res.status(400).json({
-        error: 'Total de parcelas deve ser maior ou igual a 1'
-      });
-    }
+      if (parcela_total && parcela_total < 1) {
+        console.error('❌ Validacao falhou - parcela_total < 1');
+        return res.status(400).json({
+          error: 'Total de parcelas deve ser maior ou igual a 1'
+        });
+      }
 
-    if (parcela_numero && parcela_total && parcela_numero > parcela_total) {
-      console.error('❌ Validacao falhou - parcela_numero > parcela_total');
-      return res.status(400).json({
-        error: 'Número da parcela não pode ser maior que o total de parcelas'
-      });
-    }
+      if (parcela_numero && parcela_total && parcela_numero > parcela_total) {
+        console.error('❌ Validacao falhou - parcela_numero > parcela_total');
+        return res.status(400).json({
+          error: 'Número da parcela não pode ser maior que o total de parcelas'
+        });
+      }
 
-    if (!categoria_id) {
-      console.warn('⚠️  categoria_id nao fornecido - item sera criado sem categoria');
+      if (!categoria_id) {
+        console.warn('⚠️  categoria_id nao fornecido - item sera criado sem categoria');
+      }
     }
 
     await client.query('BEGIN');
@@ -1917,7 +1920,7 @@ app.post('/api/compras', authenticateToken(pool), async (req: AuthRequest, res: 
       const itemExistente = await client.query(
         `SELECT fi.*, f.status as fatura_status
          FROM financeiro.fatura_item fi
-         JOIN financeiro.fatura f ON fi.fatura_id = f.id
+         LEFT JOIN financeiro.fatura f ON fi.fatura_id = f.id
          WHERE fi.id = $1 AND fi.tenant_id = $2`,
         [id, tenantId]
       );
@@ -1927,31 +1930,82 @@ app.post('/api/compras', authenticateToken(pool), async (req: AuthRequest, res: 
         return res.status(404).json({ error: 'Compra não encontrada' });
       }
 
-      if (itemExistente.rows[0].fatura_status === 'paga') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          error: 'Não é possível editar compras de faturas já pagas'
-        });
-      }
+      // Permitir soft delete em qualquer estado
+      const { is_deleted } = req.body;
+      if (is_deleted === true) {
+        result = await client.query(
+          `UPDATE financeiro.fatura_item 
+           SET is_deleted = true
+           WHERE id = $1 AND tenant_id = $2
+           RETURNING *`,
+          [id, tenantId]
+        );
+      } else {
+        // Validar se pode editar
+        if (itemExistente.rows[0].fatura_status === 'paga') {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: 'Não é possível editar compras de faturas já pagas'
+          });
+        }
 
-      if (itemExistente.rows[0].fatura_status === 'fechada') {
-        await client.query('ROLLBACK');
-        return res.status(400).json({
-          error: 'Não é possível editar compras de faturas fechadas'
-        });
-      }
+        if (itemExistente.rows[0].fatura_status === 'fechada') {
+          await client.query('ROLLBACK');
+          return res.status(400).json({
+            error: 'Não é possível editar compras de faturas fechadas'
+          });
+        }
 
-      // Atualizar compra existente
-      result = await client.query(
-        `UPDATE financeiro.fatura_item 
-         SET categoria_id = $1, descricao = $2, valor = $3, 
-             data_compra = $4, parcela_numero = $5, parcela_total = $6,
-             competencia = $7
-         WHERE id = $8 AND tenant_id = $9
-         RETURNING *`,
-        [categoria_id, descricao, valor, data_compra, parcela_numero, parcela_total,
-          competencia, id, tenantId]
-      );
+        // Atualizar compra existente (apenas campos fornecidos)
+        const updates: string[] = [];
+        const values: any[] = [];
+        let paramCount = 1;
+
+        if (categoria_id !== undefined) {
+          updates.push(`categoria_id = $${paramCount++}`);
+          values.push(categoria_id);
+        }
+        if (descricao !== undefined) {
+          updates.push(`descricao = $${paramCount++}`);
+          values.push(descricao);
+        }
+        if (valor !== undefined) {
+          updates.push(`valor = $${paramCount++}`);
+          values.push(valor);
+        }
+        if (data_compra !== undefined) {
+          updates.push(`data_compra = $${paramCount++}`);
+          values.push(data_compra);
+        }
+        if (parcela_numero !== undefined) {
+          updates.push(`parcela_numero = $${paramCount++}`);
+          values.push(parcela_numero);
+        }
+        if (parcela_total !== undefined) {
+          updates.push(`parcela_total = $${paramCount++}`);
+          values.push(parcela_total);
+        }
+        if (competencia !== undefined) {
+          updates.push(`competencia = $${paramCount++}`);
+          values.push(competencia);
+        }
+
+        if (updates.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+        }
+
+        values.push(id);
+        values.push(tenantId);
+
+        result = await client.query(
+          `UPDATE financeiro.fatura_item 
+           SET ${updates.join(', ')}
+           WHERE id = $${paramCount++} AND tenant_id = $${paramCount++}
+           RETURNING *`,
+          values
+        );
+      }
     } else {
       // Criar nova compra
       // 1. Garantir que a fatura existe

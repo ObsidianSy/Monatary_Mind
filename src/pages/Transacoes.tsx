@@ -28,7 +28,8 @@ import {
   Loader2,
   CheckCircle,
   Repeat,
-  Pause
+  Pause,
+  Edit
 } from "lucide-react";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
@@ -758,13 +759,30 @@ export default function Transacoes() {
                 <div className="space-y-3">
                   {activeRecurrences.map((recorrencia) => {
                     const conta = accounts.find(a => a.id === recorrencia.conta_id);
-                    const categoria = categories.find(c => c.id === recorrencia.categoria_id);
+                    
+                    // Buscar categoria principal (se tiver subcategoria_id, buscar a subcategoria)
+                    const categoriaAtual = recorrencia.subcategoria_id 
+                      ? categories.find(c => c.id === recorrencia.subcategoria_id)
+                      : categories.find(c => c.id === recorrencia.categoria_id);
+                    
+                    // Se for subcategoria, buscar a categoria pai
+                    const categoriaPai = categoriaAtual?.parent_id 
+                      ? categories.find(c => c.id === categoriaAtual.parent_id)
+                      : null;
+                    
+                    // Montar o texto de exibição da categoria
+                    const categoriaDisplay = categoriaPai 
+                      ? `${categoriaPai.nome} > ${categoriaAtual?.nome}` 
+                      : categoriaAtual?.nome || "Sem categoria";
+                    
                     const valor = typeof recorrencia.valor === 'string' ? parseFloat(recorrencia.valor) : recorrencia.valor;
 
                     const frequenciaLabel = {
                       mensal: "Mensal",
                       semanal: "Semanal",
-                      anual: "Anual"
+                      anual: "Anual",
+                      quinzenal: "Quinzenal",
+                      diario: "Diário"
                     }[recorrencia.frequencia] || recorrencia.frequencia;
 
                     return (
@@ -789,7 +807,7 @@ export default function Transacoes() {
                             <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
                               <span>{conta?.nome || "Sem conta"}</span>
                               <span>•</span>
-                              <span>{categoria?.nome || "Sem categoria"}</span>
+                              <span>{categoriaDisplay}</span>
                               <span>•</span>
                               <span className="flex items-center gap-1">
                                 <CalendarIcon className="w-3 h-3" />
@@ -821,6 +839,19 @@ export default function Transacoes() {
                             >
                               <CheckCircle className="w-4 h-4 mr-1" />
                               Registrar
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                // TODO: Abrir modal de edição
+                                toast({
+                                  title: "Em desenvolvimento",
+                                  description: "Funcionalidade de edição em breve.",
+                                });
+                              }}
+                            >
+                              <Edit className="w-4 h-4" />
                             </Button>
                             <Button
                               variant="ghost"

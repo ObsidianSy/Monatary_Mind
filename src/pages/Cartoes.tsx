@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { format, differenceInDays } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { useCreditCards, useInvoices, useInvoiceItems } from "@/hooks/useFinancialData";
+import { useCreditCards, useInvoices, useInvoiceItems, useCreditPurchases } from "@/hooks/useFinancialData";
 import type { CreditCard } from "@/types/financial";
 import { useAccounts } from "@/hooks/useAccounts";
 import { useCategories } from "@/hooks/useCategories";
@@ -67,6 +67,7 @@ export default function CartoesPage() {
 
   const { activeCards, loading, refresh, updateCard, deleteCard } = useCreditCards();
   const { invoices } = useInvoices(selectedCard?.id);
+  const { updatePurchase, deletePurchase, posting: purchasePosting } = useCreditPurchases();
   const { activeAccounts } = useAccounts();
   const { categories } = useCategories();
   const { toast } = useToast();
@@ -1482,16 +1483,11 @@ export default function CartoesPage() {
                 </Button>
                 <Button variant="default" onClick={async () => {
                   try {
-                    const res = await fetch(`/api/faturas/itens/${selectedPurchase.id}`, {
-                      method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({
-                        descricao: selectedPurchase.descricao,
-                        valor: selectedPurchase.valor,
-                        data_compra: selectedPurchase.data_compra,
-                      }),
+                    await updatePurchase(selectedPurchase.id, {
+                      descricao: selectedPurchase.descricao,
+                      valor: selectedPurchase.valor,
+                      data_compra: selectedPurchase.data_compra,
                     });
-                    if (!res.ok) throw new Error('Erro ao editar compra');
                     toast({ title: 'Compra atualizada', description: 'Alterações salvas com sucesso.' });
                     setIsEditPurchaseModalOpen(false);
                     setSelectedPurchase(null);
@@ -1499,7 +1495,7 @@ export default function CartoesPage() {
                   } catch (err: any) {
                     toast({ title: 'Erro ao editar', description: err.message || 'Não foi possível editar a compra.', variant: 'destructive' });
                   }
-                }}>
+                }} disabled={purchasePosting}>
                   Salvar
                 </Button>
               </div>
@@ -1524,10 +1520,7 @@ export default function CartoesPage() {
                 </Button>
                 <Button variant="destructive" onClick={async () => {
                   try {
-                    const res = await fetch(`/api/faturas/itens/${selectedPurchase.id}`, {
-                      method: 'DELETE',
-                    });
-                    if (!res.ok) throw new Error('Erro ao excluir compra');
+                    await deletePurchase(selectedPurchase.id);
                     toast({ title: 'Compra excluída', description: 'A compra foi removida com sucesso.' });
                     setIsDeletePurchaseModalOpen(false);
                     setSelectedPurchase(null);
@@ -1535,7 +1528,7 @@ export default function CartoesPage() {
                   } catch (err: any) {
                     toast({ title: 'Erro ao excluir', description: err.message || 'Não foi possível excluir a compra.', variant: 'destructive' });
                   }
-                }}>
+                }} disabled={purchasePosting}>
                   Excluir
                 </Button>
               </div>
