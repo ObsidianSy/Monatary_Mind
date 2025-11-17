@@ -3,6 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ErrorMessages } from "@/lib/error-messages";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Lock, Mail, AlertCircle, Eye, EyeOff, TrendingUp, ArrowLeft } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -30,10 +31,10 @@ export default function Login() {
         description: "Bem-vindo de volta.",
       });
     } catch (err: any) {
-      setError(err.message || "Erro ao fazer login");
+      setError(err.message || ErrorMessages.auth.login.invalidCredentials);
       toast({
-        title: "Erro no login",
-        description: err.message || "Credenciais inválidas",
+        title: ErrorMessages.auth.login.title,
+        description: err.message || ErrorMessages.auth.login.invalidCredentials,
         variant: "destructive",
       });
     } finally {

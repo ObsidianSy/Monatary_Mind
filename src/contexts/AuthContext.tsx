@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ErrorMessages } from '@/lib/error-messages';
 
 // ============================================
 // CONFIGURAÇÃO DA API
@@ -99,7 +100,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao fazer login');
+        throw new Error(data.error || ErrorMessages.auth.login.invalidCredentials);
       }
 
       // Salvar token e limpar workspace anterior
@@ -113,7 +114,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       navigate('/workspace');
     } catch (error: any) {
       console.error('❌ Erro no login:', error);
-      throw new Error(error.message || 'Erro ao fazer login');
+      throw new Error(error.message || ErrorMessages.auth.login.invalidCredentials);
     }
   }
 
@@ -151,13 +152,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Erro ao registrar');
+        throw new Error(data.error || ErrorMessages.auth.register.title);
       }
 
       // Após registrar, fazer login automaticamente
       await login(email, password);
     } catch (error: any) {
-      throw new Error(error.message || 'Erro ao registrar');
+      throw new Error(error.message || ErrorMessages.auth.register.title);
     }
   }
 

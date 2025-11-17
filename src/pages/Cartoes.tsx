@@ -3,6 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import { ErrorMessages } from "@/lib/error-messages";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "@/components/ui/accordion";
@@ -1442,7 +1443,7 @@ export default function CartoesPage() {
                     setIsEditInvoiceModalOpen(false);
                     refresh();
                   } catch (err: any) {
-                    toast({ title: 'Erro ao editar', description: err.message || 'Não foi possível editar a fatura.', variant: 'destructive' });
+                    toast({ title: ErrorMessages.invoice.edit.title, description: err.message || ErrorMessages.invoice.edit.description, variant: 'destructive' });
                   }
                 }}>
                   Salvar
@@ -1502,7 +1503,7 @@ export default function CartoesPage() {
                     setSelectedPurchase(null);
                     refresh();
                   } catch (err: any) {
-                    toast({ title: 'Erro ao editar', description: err.message || 'Não foi possível editar a compra.', variant: 'destructive' });
+                    toast({ title: ErrorMessages.purchase.edit.title, description: err.message || ErrorMessages.purchase.edit.description, variant: 'destructive' });
                   }
                 }} disabled={purchasePosting}>
                   Salvar
@@ -1535,7 +1536,7 @@ export default function CartoesPage() {
                     setSelectedPurchase(null);
                     refresh();
                   } catch (err: any) {
-                    toast({ title: 'Erro ao excluir', description: err.message || 'Não foi possível excluir a compra.', variant: 'destructive' });
+                    toast({ title: ErrorMessages.purchase.delete.title, description: err.message || ErrorMessages.purchase.delete.description, variant: 'destructive' });
                   }
                 }} disabled={purchasePosting}>
                   Excluir

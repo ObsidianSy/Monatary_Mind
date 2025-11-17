@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ErrorMessages } from "@/lib/error-messages";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
@@ -103,8 +104,8 @@ export default function NewTransactionModal({ open, onOpenChange, onSuccess, mod
     },
     onError: (error) => {
       toast({
-        title: "Erro ao criar transação",
-        description: error.message,
+        title: ErrorMessages.transaction.create.title,
+        description: error.message || ErrorMessages.transaction.create.description,
         variant: "destructive",
       });
     },
@@ -253,8 +254,8 @@ export default function NewTransactionModal({ open, onOpenChange, onSuccess, mod
       onSuccess?.();
     } catch (error) {
       toast({
-        title: "Erro",
-        description: error instanceof Error ? error.message : "Erro ao processar operação",
+        title: ErrorMessages.generic.validation.title,
+        description: error instanceof Error ? error.message : ErrorMessages.generic.validation.description,
         variant: "destructive",
       });
     }

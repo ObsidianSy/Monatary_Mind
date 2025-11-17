@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ErrorMessages } from "@/lib/error-messages";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -67,8 +68,8 @@ export default function AddPurchaseModal({
 
   const handleError = (error: Error) => {
     toast({
-      title: "Erro ao registrar compra",
-      description: error.message || "Ocorreu um erro inesperado.",
+      title: ErrorMessages.purchase.create.title,
+      description: error.message || ErrorMessages.purchase.create.description,
       variant: "destructive",
     });
   };

@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { ErrorMessages } from "@/lib/error-messages";
 import {
   Table,
   TableBody,
@@ -91,14 +92,14 @@ export default function Usuarios() {
         },
       });
 
-      if (!response.ok) throw new Error("Erro ao carregar usuários");
+      if (!response.ok) throw new Error(ErrorMessages.user.load.description);
 
       const data = await response.json();
       setUsers(data.data);
     } catch (error: any) {
       toast({
-        title: "Erro ao carregar usuários",
-        description: error.message,
+        title: ErrorMessages.user.load.title,
+        description: error.message || ErrorMessages.user.load.description,
         variant: "destructive",
       });
     } finally {
@@ -143,7 +144,7 @@ export default function Usuarios() {
 
       if (!response.ok) {
         const error = await response.json();
-        throw new Error(error.error || "Erro ao criar usuário");
+        throw new Error(error.error || ErrorMessages.user.create.description);
       }
 
       toast({
@@ -155,8 +156,8 @@ export default function Usuarios() {
       loadUsers();
     } catch (error: any) {
       toast({
-        title: "Erro ao criar usuário",
-        description: error.message,
+        title: ErrorMessages.user.create.title,
+        description: error.message || ErrorMessages.user.create.description,
         variant: "destructive",
       });
     }
@@ -181,7 +182,7 @@ export default function Usuarios() {
         }),
       });
 
-      if (!updateResponse.ok) throw new Error("Erro ao atualizar usuário");
+      if (!updateResponse.ok) throw new Error(ErrorMessages.user.update.description);
 
       // Atualizar roles
       if (formData.roles.length > 0) {
@@ -196,7 +197,7 @@ export default function Usuarios() {
           }),
         });
 
-        if (!rolesResponse.ok) throw new Error("Erro ao atualizar roles");
+        if (!rolesResponse.ok) throw new Error(ErrorMessages.user.update.description);
       }
 
       toast({
@@ -209,8 +210,8 @@ export default function Usuarios() {
       loadUsers();
     } catch (error: any) {
       toast({
-        title: "Erro ao atualizar usuário",
-        description: error.message,
+        title: ErrorMessages.user.update.title,
+        description: error.message || ErrorMessages.user.update.description,
         variant: "destructive",
       });
     }
@@ -228,7 +229,7 @@ export default function Usuarios() {
         },
       });
 
-      if (!response.ok) throw new Error("Erro ao deletar usuário");
+      if (!response.ok) throw new Error(ErrorMessages.user.delete.description);
 
       toast({
         title: "Usuário deletado com sucesso!",
@@ -237,8 +238,8 @@ export default function Usuarios() {
       loadUsers();
     } catch (error: any) {
       toast({
-        title: "Erro ao deletar usuário",
-        description: error.message,
+        title: ErrorMessages.user.delete.title,
+        description: error.message || ErrorMessages.user.delete.description,
         variant: "destructive",
       });
     }

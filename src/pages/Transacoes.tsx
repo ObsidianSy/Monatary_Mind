@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ErrorMessages } from "@/lib/error-messages";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -367,8 +368,8 @@ export default function Transacoes() {
       await loadTransactions();
     } catch (error: any) {
       toast({
-        title: "Erro ao excluir",
-        description: error.message || "Não foi possível excluir as transações.",
+        title: ErrorMessages.transaction.delete.title,
+        description: error.message || ErrorMessages.transaction.delete.description,
         variant: "destructive",
       });
     }
@@ -380,8 +381,8 @@ export default function Transacoes() {
 
     if (!apiTransaction) {
       toast({
-        title: "Erro",
-        description: "Não foi possível encontrar os dados da transação.",
+        title: ErrorMessages.generic.notFound.title,
+        description: "A transação não foi encontrada ou já foi excluída.",
         variant: "destructive",
       });
       return;
@@ -408,8 +409,8 @@ export default function Transacoes() {
       await loadTransactions();
     } catch (error: any) {
       toast({
-        title: "Erro ao excluir",
-        description: error.message || "Não foi possível excluir a transação.",
+        title: ErrorMessages.transaction.delete.title,
+        description: error.message || ErrorMessages.transaction.delete.description,
         variant: "destructive",
       });
     }
@@ -976,8 +977,8 @@ export default function Transacoes() {
                 refreshRecurrences();
               } catch (error: any) {
                 toast({
-                  title: "Erro ao atualizar",
-                  description: error.message || "Não foi possível atualizar a recorrência.",
+                  title: ErrorMessages.recurrence.update.title,
+                  description: error.message || ErrorMessages.recurrence.update.description,
                   variant: "destructive",
                 });
               }
