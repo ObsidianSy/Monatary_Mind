@@ -52,56 +52,174 @@ const CustomTooltip = ({ active, payload, label, formatter }: any) => {
 };
 
 const Relatorios = () => {
-  const [selectedPeriod, setSelectedPeriod] = useState("current-month");
+  const [selectedPeriod, setSelectedPeriod] = useState("current-year");
+  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [filters, setFilters] = useState({
-    from: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
-    to: new Date().toISOString().split('T')[0],
-    status: "liquidado"
+    from: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
+    to: new Date(new Date().getFullYear(), 11, 31).toISOString().split('T')[0]
+    // Removido status fixo para buscar tanto liquidado quanto previsto
   });
 
   const { toast } = useToast();
   const client = useFinanceiroClient({ tenantId: "obsidian" });
+  
+  // Buscar transações
   const { data: transactions, loading, error } = useFinanceiroRead(
     client,
     "transacao",
-    filters,
+    { ...filters, limit: 10000 },
     [filters]
   );
 
-  useEffect(() => {
-    const now = new Date();
-    let from: Date, to: Date;
+  // Buscar recorrências ativas para calcular valores futuros
+  const { data: recorrencias } = useFinanceiroRead(
+    client,
+    "recorrencia",
+    { is_paused: false, limit: 1000 },
+    []
+  );
 
-    switch (selectedPeriod) {
-      case "current-month":
-        from = new Date(now.getFullYear(), now.getMonth(), 1);
-        to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        break;
-      case "last-month":
-        from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        to = new Date(now.getFullYear(), now.getMonth(), 0);
-        break;
-      case "current-year":
-        from = new Date(now.getFullYear(), 0, 1);
-        to = new Date(now.getFullYear(), 11, 31);
-        break;
-      case "last-year":
-        from = new Date(now.getFullYear() - 1, 0, 1);
-        to = new Date(now.getFullYear() - 1, 11, 31);
-        break;
-      default:
-        from = new Date(now.getFullYear(), now.getMonth(), 1);
-        to = new Date();
-    }
+  useEffect(() => {
+    const from = new Date(selectedYear, 0, 1);
+    const to = new Date(selectedYear, 11, 31);
 
     setFilters({
       from: from.toISOString().split('T')[0],
-      to: to.toISOString().split('T')[0],
-      status: "liquidado"
+      to: to.toISOString().split('T')[0]
+      // Sem filtro de status - buscar todos
     });
-  }, [selectedPeriod]);
+  }, [selectedYear]);
+  
+  // Processar dados mensais estilo planilha (apenas liquidado)
+  const monthlyData = useMemo(() => {
+    if (!transactions) return [];
 
-  // Process transactions data for DRE
+    const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const categorias = new Map<string, { tipo: string, valores: number[] }>();
+
+    // Agrupar por categoria e mês (apenas liquidado)
+    transactions
+      .filter(t => t.status === 'liquidado')
+      .forEach(t => {
+        const mes = new Date(t.data_transacao).getMonth();
+        const categoria = t.categoria_pai_nome || t.subcategoria_nome || 'Sem categoria';
+        const valor = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor || 0;
+
+        if (!categorias.has(categoria)) {
+          categorias.set(categoria, { tipo: t.tipo, valores: Array(12).fill(0) });
+        }
+
+        const cat = categorias.get(categoria)!;
+        cat.valores[mes] += Math.abs(valor);
+      });
+
+    // Separar receitas e despesas
+    const receitas: any[] = [];
+    const despesas: any[] = [];
+
+    categorias.forEach((dados, nome) => {
+      const linha = { categoria: nome, valores: dados.valores };
+      if (dados.tipo === 'credito') {
+        receitas.push(linha);
+      } else if (dados.tipo === 'debito') {
+        despesas.push(linha);
+      }
+    });
+
+    // Calcular totais mensais
+    const totaisReceitas = Array(12).fill(0);
+    const totaisDespesas = Array(12).fill(0);
+
+    receitas.forEach(r => r.valores.forEach((v: number, i: number) => totaisReceitas[i] += v));
+    despesas.forEach(d => d.valores.forEach((v: number, i: number) => totaisDespesas[i] += v));
+
+    const resultadoMensal = totaisReceitas.map((r, i) => r - totaisDespesas[i]);
+    const resultadoAcumulado = resultadoMensal.reduce((acc: number[], val) => {
+      acc.push((acc[acc.length - 1] || 0) + val);
+      return acc;
+    }, []);
+
+    return {
+      meses,
+      receitas,
+      despesas,
+      totaisReceitas,
+      totaisDespesas,
+      resultadoMensal,
+      resultadoAcumulado
+    };
+  }, [transactions]);
+
+  // Calcular A Receber e A Pagar Acumulado (transações previstas + recorrências)
+  const valoresFuturos = useMemo(() => {
+    if (!transactions) return { aReceber: 0, aPagar: 0 };
+
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+
+    let aReceber = 0;
+    let aPagar = 0;
+    let countPrevistos = 0;
+    let countFuturos = 0;
+    let countRecorrencias = 0;
+
+    // Somar transações previstas futuras
+    transactions.forEach(transaction => {
+      if (transaction.status === 'previsto') countPrevistos++;
+
+      if (transaction.status !== 'previsto') return;
+
+      const dataTransacao = parseDate(transaction.data_transacao);
+      if (dataTransacao <= hoje) return; // Só valores futuros
+
+      countFuturos++;
+      const valor = typeof transaction.valor === 'string' ? parseFloat(transaction.valor) : transaction.valor;
+      const valorAbs = Math.abs(valor || 0);
+
+      if (transaction.tipo === 'credito') {
+        aReceber += valorAbs;
+      } else if (transaction.tipo === 'debito') {
+        aPagar += valorAbs;
+      }
+    });
+
+    // Somar recorrências ativas (próximas 3 ocorrências)
+    if (recorrencias && recorrencias.length > 0) {
+      recorrencias.forEach(recorrencia => {
+        if (recorrencia.is_paused || recorrencia.is_deleted) return;
+
+        const proximaOcorrencia = parseDate(recorrencia.proxima_ocorrencia);
+        if (proximaOcorrencia <= hoje) return;
+
+        countRecorrencias++;
+        const valor = typeof recorrencia.valor === 'string' ? parseFloat(recorrencia.valor) : recorrencia.valor;
+        const valorAbs = Math.abs(valor || 0);
+
+        // Considerar próximas 3 ocorrências (simplificado)
+        const valorProjetado = valorAbs * 3;
+
+        if (recorrencia.tipo === 'credito') {
+          aReceber += valorProjetado;
+        } else if (recorrencia.tipo === 'debito') {
+          aPagar += valorProjetado;
+        }
+      });
+    }
+
+    console.log('🔍 DEBUG A Receber/Pagar:', {
+      totalTransacoes: transactions?.length,
+      previstos: countPrevistos,
+      futuros: countFuturos,
+      recorrenciasAtivas: countRecorrencias,
+      hoje: hoje.toISOString().split('T')[0],
+      aReceber,
+      aPagar
+    });
+
+    return { aReceber, aPagar };
+  }, [transactions, recorrencias]);
+
+  // Process transactions data for DRE (apenas liquidado)
   const dreData = useMemo(() => {
     if (!transactions) return { 
       receitas: [], 
@@ -115,19 +233,22 @@ const Relatorios = () => {
     const despesas = new Map<string, number>();
     const categorias = new Set<string>();
 
-    transactions.forEach(transaction => {
-      const subcategoria = transaction.subcategoria_nome || transaction.categoria_nome || "Sem categoria";
-      const valor = typeof transaction.valor === 'string' ? parseFloat(transaction.valor) : transaction.valor;
-      const valorAbs = Math.abs(valor || 0);
-      
-      categorias.add(subcategoria);
+    // Filtrar apenas transações liquidadas para o DRE
+    transactions
+      .filter(t => t.status === 'liquidado')
+      .forEach(transaction => {
+        const subcategoria = transaction.subcategoria_nome || transaction.categoria_nome || "Sem categoria";
+        const valor = typeof transaction.valor === 'string' ? parseFloat(transaction.valor) : transaction.valor;
+        const valorAbs = Math.abs(valor || 0);
+        
+        categorias.add(subcategoria);
 
-      if (transaction.tipo === "credito") {
-        receitas.set(subcategoria, (receitas.get(subcategoria) || 0) + valorAbs);
-      } else if (transaction.tipo === "debito") {
-        despesas.set(subcategoria, (despesas.get(subcategoria) || 0) + valorAbs);
-      }
-    });
+        if (transaction.tipo === "credito") {
+          receitas.set(subcategoria, (receitas.get(subcategoria) || 0) + valorAbs);
+        } else if (transaction.tipo === "debito") {
+          despesas.set(subcategoria, (despesas.get(subcategoria) || 0) + valorAbs);
+        }
+      });
 
     const receitasArray = Array.from(receitas.entries()).map(([nome, valor]) => ({ nome, valor }));
     const despesasArray = Array.from(despesas.entries()).map(([nome, valor]) => ({ nome, valor }));
@@ -296,8 +417,8 @@ const Relatorios = () => {
 
       {/* Summary Cards */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i}>
               <CardContent className="p-6">
                 <div className="flex items-center space-x-2">
@@ -312,52 +433,82 @@ const Relatorios = () => {
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <Card>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          <Card className="border-l-4 border-l-success">
             <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
-                <TrendingUp className="h-4 w-4 text-success" />
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Receitas Totais</p>
-                  <p className="text-2xl font-bold text-success">{formatCurrency(dreData.totalReceitas)}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">Receitas</p>
+                <p className="text-2xl font-bold text-success">{formatCurrency(dreData.totalReceitas)}</p>
+                <div className="flex items-center text-xs text-muted-foreground">
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  Liquidado
                 </div>
               </div>
             </CardContent>
           </Card>
           
-          <Card>
+          <Card className="border-l-4 border-l-destructive">
             <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
-                <TrendingDown className="h-4 w-4 text-destructive" />
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Despesas Totais</p>
-                  <p className="text-2xl font-bold text-destructive">{formatCurrency(dreData.totalDespesas)}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">Despesas</p>
+                <p className="text-2xl font-bold text-destructive">{formatCurrency(dreData.totalDespesas)}</p>
+                <div className="flex items-center text-xs text-muted-foreground">
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                  Liquidado
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className={`border-l-4 ${dreData.totalReceitas - dreData.totalDespesas >= 0 ? 'border-l-primary' : 'border-l-destructive'}`}>
             <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
-                <Target className="h-4 w-4 text-primary" />
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Resultado Líquido</p>
-                  <p className={`text-2xl font-bold ${dreData.totalReceitas - dreData.totalDespesas >= 0 ? 'text-success' : 'text-destructive'}`}>
-                    {formatCurrency(dreData.totalReceitas - dreData.totalDespesas)}
-                  </p>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">Resultado</p>
+                <p className={`text-2xl font-bold ${dreData.totalReceitas - dreData.totalDespesas >= 0 ? 'text-primary' : 'text-destructive'}`}>
+                  {formatCurrency(dreData.totalReceitas - dreData.totalDespesas)}
+                </p>
+                <div className="flex items-center text-xs text-muted-foreground">
+                  <Target className="h-3 w-3 mr-1" />
+                  Líquido
                 </div>
               </div>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-l-4 border-l-blue-500">
             <CardContent className="p-6">
-              <div className="flex items-center space-x-2">
-                <Calendar className="h-4 w-4 text-warning" />
-                <div>
-                  <p className="text-sm font-medium text-muted-foreground">Transações</p>
-                  <p className="text-2xl font-bold text-warning">{transactions?.length || 0}</p>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">A Receber</p>
+                <p className="text-2xl font-bold text-blue-600">{formatCurrency(valoresFuturos.aReceber)}</p>
+                <div className="flex items-center text-xs text-muted-foreground">
+                  <TrendingUp className="h-3 w-3 mr-1" />
+                  Previsto
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-orange-500">
+            <CardContent className="p-6">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">A Pagar</p>
+                <p className="text-2xl font-bold text-orange-600">{formatCurrency(valoresFuturos.aPagar)}</p>
+                <div className="flex items-center text-xs text-muted-foreground">
+                  <TrendingDown className="h-3 w-3 mr-1" />
+                  Previsto
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-warning">
+            <CardContent className="p-6">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground uppercase">Transações</p>
+                <p className="text-2xl font-bold text-warning">{transactions?.length || 0}</p>
+                <div className="flex items-center text-xs text-muted-foreground">
+                  <Calendar className="h-3 w-3 mr-1" />
+                  Total
                 </div>
               </div>
             </CardContent>
@@ -366,13 +517,135 @@ const Relatorios = () => {
       )}
 
       {/* Reports Tabs */}
-      <Tabs defaultValue="dre" className="space-y-4">
+      <Tabs defaultValue="mensal" className="space-y-4">
         <TabsList>
+          <TabsTrigger value="mensal">Demonstrativo Mensal</TabsTrigger>
           <TabsTrigger value="dre">DRE</TabsTrigger>
           <TabsTrigger value="fluxo">Fluxo de Caixa</TabsTrigger>
           <TabsTrigger value="contas">Contas a Pagar</TabsTrigger>
           <TabsTrigger value="cartoes">Cartões</TabsTrigger>
         </TabsList>
+
+        {/* NOVA ABA: Demonstrativo Mensal estilo planilha */}
+        <TabsContent value="mensal">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between">
+              <div>
+                <CardTitle>Demonstrativo Mensal {selectedYear}</CardTitle>
+                <p className="text-sm text-muted-foreground mt-1">Receitas, despesas e resultado por mês</p>
+              </div>
+              <div className="flex gap-2">
+                <Select value={String(selectedYear)} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+                  <SelectTrigger className="w-[120px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[2024, 2025, 2026].map(ano => (
+                      <SelectItem key={ano} value={String(ano)}>{ano}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    const data = monthlyData.receitas.concat(monthlyData.despesas);
+                    exportToCSV(data.map(d => ({
+                      categoria: d.categoria,
+                      ...Object.fromEntries(monthlyData.meses.map((m, i) => [m, d.valores[i]]))
+                    })), `demonstrativo_${selectedYear}`);
+                  }}
+                  disabled={loading}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Exportar
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {loading ? (
+                <div className="h-96 bg-muted rounded-lg animate-pulse"></div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm border-collapse">
+                    <thead>
+                      <tr className="border-b-2 border-border">
+                        <th className="text-left p-2 font-semibold sticky left-0 bg-background z-10">Categoria</th>
+                        {monthlyData.meses.map(mes => (
+                          <th key={mes} className="text-right p-2 font-semibold min-w-[90px]">{mes}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {/* RECEITAS */}
+                      <tr className="bg-success/5">
+                        <td className="p-2 font-bold sticky left-0 bg-success/5 z-10">RECEITAS</td>
+                        <td colSpan={12}></td>
+                      </tr>
+                      {monthlyData.receitas.map((linha, idx) => (
+                        <tr key={`rec-${idx}`} className="border-b border-border hover:bg-muted/30">
+                          <td className="p-2 sticky left-0 bg-background z-10">{linha.categoria}</td>
+                          {linha.valores.map((val: number, i: number) => (
+                            <td key={i} className="text-right p-2 text-success font-medium">
+                              {val > 0 ? formatCurrency(val) : '-'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      <tr className="bg-success/10 font-bold border-t-2 border-success">
+                        <td className="p-2 sticky left-0 bg-success/10 z-10">TOTAL RECEITAS</td>
+                        {monthlyData.totaisReceitas.map((val: number, i: number) => (
+                          <td key={i} className="text-right p-2 text-success">{formatCurrency(val)}</td>
+                        ))}
+                      </tr>
+
+                      {/* DESPESAS */}
+                      <tr className="bg-destructive/5 border-t-2">
+                        <td className="p-2 font-bold sticky left-0 bg-destructive/5 z-10">DESPESAS</td>
+                        <td colSpan={12}></td>
+                      </tr>
+                      {monthlyData.despesas.map((linha, idx) => (
+                        <tr key={`desp-${idx}`} className="border-b border-border hover:bg-muted/30">
+                          <td className="p-2 sticky left-0 bg-background z-10">{linha.categoria}</td>
+                          {linha.valores.map((val: number, i: number) => (
+                            <td key={i} className="text-right p-2 text-destructive font-medium">
+                              {val > 0 ? formatCurrency(val) : '-'}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                      <tr className="bg-destructive/10 font-bold border-t-2 border-destructive">
+                        <td className="p-2 sticky left-0 bg-destructive/10 z-10">TOTAL DESPESAS</td>
+                        {monthlyData.totaisDespesas.map((val: number, i: number) => (
+                          <td key={i} className="text-right p-2 text-destructive">{formatCurrency(val)}</td>
+                        ))}
+                      </tr>
+
+                      {/* RESULTADO MENSAL */}
+                      <tr className="bg-primary/10 font-bold border-t-2 border-primary">
+                        <td className="p-2 sticky left-0 bg-primary/10 z-10">RESULTADO MENSAL</td>
+                        {monthlyData.resultadoMensal.map((val: number, i: number) => (
+                          <td key={i} className={`text-right p-2 ${val >= 0 ? 'text-success' : 'text-destructive'}`}>
+                            {formatCurrency(val)}
+                          </td>
+                        ))}
+                      </tr>
+
+                      {/* RESULTADO ACUMULADO */}
+                      <tr className="bg-accent/10 font-bold border-t-2 border-accent">
+                        <td className="p-2 sticky left-0 bg-accent/10 z-10">RESULTADO ACUMULADO</td>
+                        {monthlyData.resultadoAcumulado.map((val: number, i: number) => (
+                          <td key={i} className={`text-right p-2 ${val >= 0 ? 'text-success' : 'text-destructive'}`}>
+                            {formatCurrency(val)}
+                          </td>
+                        ))}
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
         
         <TabsContent value="dre">
           <Card>
