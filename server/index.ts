@@ -1019,19 +1019,32 @@ app.delete('/api/contas/:id', authenticateToken(pool), async (req: AuthRequest, 
 
 // ==================== ROTAS DE PROJEÇÃO E SALDO ====================
 
-// Saldo das contas
+// Saldo das contas (calculado dinamicamente)
 app.get('/api/saldo_conta', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
   try {
     const tenantId = req.user?.tenantId;
     if (!tenantId) {
       return res.status(400).json({ error: 'Selecione um workspace primeiro' });
     }
+    
+    // Calcula saldo_atual = saldo_inicial + SUM(créditos) - SUM(débitos) apenas de transações liquidadas
     const result = await query(
-      `SELECT id, nome, tipo, saldo_inicial, 
-         saldo_inicial as saldo_atual
-       FROM financeiro.conta
-       WHERE tenant_id = $1
-       ORDER BY nome`,
+      `SELECT 
+         c.id, 
+         c.nome, 
+         c.tipo, 
+         c.saldo_inicial,
+         c.saldo_inicial + COALESCE(
+           (SELECT SUM(CASE WHEN t.tipo = 'credito' THEN t.valor ELSE -t.valor END)
+            FROM financeiro.transacao t
+            WHERE t.conta_id = c.id 
+              AND t.status = 'liquidado'
+              AND t.tenant_id = $1
+           ), 0
+         ) as saldo_atual
+       FROM financeiro.conta c
+       WHERE c.tenant_id = $1
+       ORDER BY c.nome`,
       [tenantId]
     );
     res.json(result.rows);
@@ -1668,7 +1681,15 @@ app.get('/api/faturas', authenticateToken(pool), async (req: AuthRequest, res: R
     } = req.query;
 
     let queryText = `
-      SELECT f.*, c.apelido as cartao_apelido
+      SELECT 
+        f.*,
+        c.apelido as cartao_apelido,
+        COALESCE(
+          (SELECT SUM(fi.valor) 
+           FROM financeiro.fatura_item fi 
+           WHERE fi.fatura_id = f.id AND fi.is_deleted = false),
+          0
+        ) as valor_total
       FROM financeiro.fatura f
       LEFT JOIN financeiro.cartao c ON f.cartao_id = c.id
       WHERE f.tenant_id = $1
@@ -1697,6 +1718,167 @@ app.get('/api/faturas', authenticateToken(pool), async (req: AuthRequest, res: R
   } catch (error: any) {
     console.error('Erro ao buscar faturas:', error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Atualizar fatura (editar data de vencimento, status)
+app.put('/api/faturas/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const { data_vencimento, status } = req.body;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+
+    await client.query('BEGIN');
+
+    const fRes = await client.query(
+      `SELECT * FROM financeiro.fatura WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    if (fRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fatura não encontrada' });
+    }
+
+    const fatura = fRes.rows[0];
+
+    // Não permitir editar fatura paga via PUT: use endpoint de evento para pagar
+    if (fatura.status === 'paga') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Não é possível editar faturas já pagas. Use o evento de pagamento para processar.' });
+    }
+
+    // Se o status passado for 'paga', forçar o uso do evento /api/events/fatura.pagar
+    if (status === 'paga') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Para marcar fatura como paga, use o endpoint /api/events/fatura.pagar' });
+    }
+
+    // Se status for 'fechada', reaplicar lógica de fechamento (deletar transação A Pagar, atualizar valor_fechado)
+    if (status === 'fechada') {
+      // Calcular total dos itens
+      const totalRes = await client.query(
+        `SELECT COALESCE(SUM(valor), 0) as total FROM financeiro.fatura_item WHERE fatura_id = $1 AND is_deleted = false AND tenant_id = $2`,
+        [id, tenantId]
+      );
+      const valorFechado = parseFloat(totalRes.rows[0].total);
+
+      // Remover transação A Pagar se existir
+      if (fatura.transacao_id) {
+        await client.query(`DELETE FROM financeiro.transacao WHERE id = $1`, [fatura.transacao_id]);
+        console.log(`🗑️ Transação A Pagar ${fatura.transacao_id} removida ao fechar fatura via PUT`);
+      }
+
+      const updateRes = await client.query(
+        `UPDATE financeiro.fatura SET status = 'fechada', valor_fechado = $1, data_fechamento = CURRENT_DATE, transacao_id = NULL WHERE id = $2 RETURNING *`,
+        [valorFechado, id]
+      );
+
+      await client.query('COMMIT');
+      return res.json(updateRes.rows[0]);
+    }
+
+    // Caso comum: apenas atualizar data_vencimento e/ou status (para 'aberta' ou outros)
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramIndex = 1;
+
+    if (data_vencimento !== undefined) {
+      updates.push(`data_vencimento = $${paramIndex++}`);
+      values.push(data_vencimento);
+    }
+
+    if (status !== undefined) {
+      updates.push(`status = $${paramIndex++}`);
+      values.push(status);
+    }
+
+    if (updates.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Nenhum campo para atualizar' });
+    }
+
+    values.push(id);
+    values.push(tenantId);
+
+    const result = await client.query(
+      `UPDATE financeiro.fatura SET ${updates.join(', ')} WHERE id = $${paramIndex++} AND tenant_id = $${paramIndex++} RETURNING *`,
+      values
+    );
+
+    await client.query('COMMIT');
+    res.json(result.rows[0]);
+  } catch (error: any) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao atualizar fatura:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
+  }
+});
+
+// Deletar fatura (apenas faturas sem itens e não pagas)
+app.delete('/api/faturas/:id', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  const client = await pool.connect();
+  try {
+    const { id } = req.params;
+    const tenantId = req.user?.tenantId;
+
+    if (!tenantId) return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+
+    await client.query('BEGIN');
+
+    const fRes = await client.query(
+      `SELECT * FROM financeiro.fatura WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+    if (fRes.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Fatura não encontrada' });
+    }
+
+    const fatura = fRes.rows[0];
+    if (fatura.status === 'paga') {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Não é possível excluir fatura paga' });
+    }
+
+    // Verificar se existem itens na fatura
+    const itemCountRes = await client.query(
+      `SELECT COUNT(*) as cnt FROM financeiro.fatura_item WHERE fatura_id = $1 AND is_deleted = false AND tenant_id = $2`,
+      [id, tenantId]
+    );
+    const count = parseInt(itemCountRes.rows[0].cnt, 10);
+    if (count > 0) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'Não é possível excluir fatura que possua compras. Remova as compras primeiro.' });
+    }
+
+    // Se existir transacao A Pagar vinculada, removê-la
+    if (fatura.transacao_id) {
+      await client.query(
+        `DELETE FROM financeiro.transacao WHERE id = $1`,
+        [fatura.transacao_id]
+      );
+      console.log(`🗑️ Transação A Pagar ${fatura.transacao_id} removida ao excluir fatura`);
+    }
+
+    await client.query(
+      `DELETE FROM financeiro.fatura WHERE id = $1 AND tenant_id = $2`,
+      [id, tenantId]
+    );
+
+    await client.query('COMMIT');
+    res.json({ success: true });
+  } catch (error: any) {
+    await client.query('ROLLBACK');
+    console.error('Erro ao deletar fatura:', error);
+    res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
 
@@ -2576,6 +2758,7 @@ app.post('/api/events/fatura.pagar', authenticateToken(pool), async (req: AuthRe
     );
 
     console.log(`📦 Desmembrando ${itensResult.rows.length} itens da fatura...`);
+    console.log(`🧾 Pagamento: fatura_id=${fatura_id}, conta_id=${conta_id}, valor_pago=${valor_pago}, data_pagamento=${data_pagamento}`);
 
     // 3️⃣ Criar transações separadas para cada item
     for (const item of itensResult.rows) {
@@ -2588,11 +2771,11 @@ app.post('/api/events/fatura.pagar', authenticateToken(pool), async (req: AuthRe
         ? toYmd(item.data_compra)
         : String(item.data_compra).split('T')[0];
 
-      await client.query(
+      const ins = await client.query(
         `INSERT INTO financeiro.transacao 
          (tenant_id, tipo, valor, descricao, data_transacao, conta_id, categoria_id, 
           origem, referencia, status, mes_referencia)
-         VALUES ($1, 'debito', $2, $3, $4, $5, $6, $7, $8, 'liquidado', $9)`,
+         VALUES ($1, 'debito', $2, $3, $4, $5, $6, $7, $8, 'liquidado', $9) RETURNING id`,
         [
           tenantId,
           item.valor,
@@ -2605,6 +2788,11 @@ app.post('/api/events/fatura.pagar', authenticateToken(pool), async (req: AuthRe
           data_pagamento.substring(0, 7) // YYYY-MM (data_pagamento já é string do req.body)
         ]
       );
+      if (ins.rows && ins.rows[0]) {
+        console.log(`📝 Transação criada: ${ins.rows[0].id} conta_id: ${conta_id} valor: ${item.valor} origem: fatura_item:${item.id}`);
+      } else {
+        console.warn(`⚠️ INSERT retornou sem rows para item ${item.id}.`);
+      }
     }
 
     console.log(`✅ ${itensResult.rows.length} transações de itens criadas`);
@@ -2624,6 +2812,26 @@ app.post('/api/events/fatura.pagar', authenticateToken(pool), async (req: AuthRe
     await client.query('COMMIT');
 
     console.log(`✅ Fatura ${fatura_id} paga. ${itensResult.rows.length} transações de itens criadas.`);
+
+    // 🔍 Log saldo da conta após pagamento (debug)
+    try {
+      const saldoRes = await client.query(
+        `SELECT c.id, c.nome, c.saldo_inicial + COALESCE(
+           (SELECT SUM(CASE WHEN t.tipo = 'credito' THEN t.valor ELSE -t.valor END)
+            FROM financeiro.transacao t
+            WHERE t.conta_id = c.id AND t.tenant_id = $1 AND t.status = 'liquidado'
+           ), 0
+         ) as saldo_atual
+         FROM financeiro.conta c
+         WHERE c.id = $2 AND c.tenant_id = $1`,
+        [tenantId, conta_id]
+      );
+      if (saldoRes.rows.length > 0) {
+        console.log(`💳 Saldo atual conta ${saldoRes.rows[0].id} (${saldoRes.rows[0].nome}): ${saldoRes.rows[0].saldo_atual}`);
+      }
+    } catch (err) {
+      console.warn('Erro ao calcular saldo da conta para log:', err.message || err);
+    }
     res.json({
       fatura: updateResult.rows[0],
       itens_desmembrados: itensResult.rows.length
@@ -2635,6 +2843,228 @@ app.post('/api/events/fatura.pagar', authenticateToken(pool), async (req: AuthRe
     res.status(500).json({ error: error.message });
   } finally {
     client.release();
+  }
+});
+
+// ==================== PROJEÇÃO ====================
+// GET /api/projecao?months=6&account_id=&includeRecorrencias=1&includePrevistos=1&includeFaturas=1
+app.get('/api/projecao', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+
+    const months = parseInt(String(req.query.months || '6'), 10);
+    const accountId = req.query.account_id as string | undefined;
+    const includeRecorrencias = req.query.includeRecorrencias !== '0';
+    const includePrevistos = req.query.includePrevistos !== '0';
+    const includeFaturas = req.query.includeFaturas !== '0';
+
+    // Buscar contas
+    let accountsQuery = `SELECT id, nome, tipo, saldo_inicial FROM financeiro.conta WHERE tenant_id = $1 AND is_deleted = false`;
+    const params: any[] = [tenantId];
+    if (accountId) {
+      accountsQuery += ` AND id = $2`;
+      params.push(accountId);
+    }
+    const accountsRes = await query(accountsQuery, params);
+    const accounts = accountsRes.rows;
+
+    // Saldo atual por conta (usando view ou fallback para saldo_inicial)
+    let saldoMap: Record<string, number> = {};
+    try {
+      const saldoRes = await query(
+        `SELECT v.conta_id, v.conta_nome, v.tipo, v.saldo_atual
+         FROM financeiro.vw_saldo_por_conta v
+         JOIN financeiro.conta c ON c.id = v.conta_id
+         WHERE c.tenant_id = $1 AND c.is_deleted = false`,
+        [tenantId]
+      );
+      saldoRes.rows.forEach((r: any) => { saldoMap[r.conta_id] = parseFloat(String(r.saldo_atual || 0)); });
+    } catch (viewError) {
+      console.warn('⚠️ View vw_saldo_por_conta não encontrada, usando saldo_inicial das contas');
+      // Fallback: usar saldo_inicial das contas já carregadas
+      accounts.forEach((acc: any) => {
+        saldoMap[acc.id] = parseFloat(String(acc.saldo_inicial || 0));
+      });
+    }
+
+    // Date helper
+    const today = new Date();
+    const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+
+    // Collect transactions previstos in range
+    const endMonth = new Date(today.getFullYear(), today.getMonth() + months, 1);
+    const transPrevistosRes = includePrevistos ? await query(
+      `SELECT t.*, co.nome as conta_nome FROM financeiro.transacao t LEFT JOIN financeiro.conta co ON t.conta_id = co.id WHERE t.tenant_id = $1 AND t.status = 'previsto' AND t.data_transacao >= $2 AND t.data_transacao < $3`,
+      [tenantId, startMonth.toISOString().split('T')[0], endMonth.toISOString().split('T')[0]]
+    ) : { rows: [] };
+
+    // Recorrências ativas
+    const recorrenciasRes = includeRecorrencias ? await query(
+      `SELECT * FROM financeiro.recorrencia WHERE tenant_id = $1 AND is_deleted = false AND is_paused = false`,
+      [tenantId]
+    ) : { rows: [] };
+
+    // Faturas fechadas/abertas para o período
+    const faturasRes = includeFaturas ? await query(
+      `SELECT f.*, ca.conta_pagamento_id, ca.apelido as cartao_apelido 
+       FROM financeiro.fatura f 
+       JOIN financeiro.cartao ca ON ca.id = f.cartao_id 
+       WHERE f.tenant_id = $1 AND f.data_vencimento >= $2 AND f.data_vencimento < $3`,
+      [tenantId, startMonth.toISOString().split('T')[0], endMonth.toISOString().split('T')[0]]
+    ) : { rows: [] };
+
+    // Prepare recurrence occurrence generator (similar to client hook)
+    function occurrencesForRecurrence(rec: any, year: number, month: number): Date[] {
+      const occurrences: Date[] = [];
+      const firstDay = new Date(year, month - 1, 1);
+      const lastDay = new Date(year, month, 0);
+      switch (rec.frequencia) {
+        case 'mensal':
+          if (rec.dia_vencimento) {
+            const dia = Math.min(rec.dia_vencimento, lastDay.getDate());
+            occurrences.push(new Date(year, month - 1, dia));
+          }
+          break;
+        case 'semanal':
+          if (rec.dia_semana !== undefined && rec.dia_semana !== null) {
+            let cur = new Date(firstDay);
+            while (cur <= lastDay) {
+              if (cur.getDay() === rec.dia_semana) occurrences.push(new Date(cur));
+              cur.setDate(cur.getDate() + 1);
+            }
+          }
+          break;
+        case 'anual':
+          const dataInicio = new Date(rec.data_inicio);
+          if ((dataInicio.getMonth() + 1) === month) {
+            const dia = Math.min(dataInicio.getDate(), lastDay.getDate());
+            occurrences.push(new Date(year, month - 1, dia));
+          }
+          break;
+      }
+      return occurrences;
+    }
+
+    // Initialize projection buckets per account
+    const projection: any = {};
+    accounts.forEach((acc: any) => {
+      projection[acc.id] = {
+        account: acc,
+        saldo_inicial: acc.saldo_inicial,
+        saldo_atual: saldoMap[acc.id] || (typeof acc.saldo_inicial === 'number' ? acc.saldo_inicial : parseFloat(String(acc.saldo_inicial || 0))),
+        months: [] as any[]
+      };
+    });
+
+    // Build months list
+    const monthsList: { year: number; month: number; label: string }[] = [];
+    for (let i = 0; i < months; i++) {
+      const d = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1);
+      monthsList.push({ year: d.getFullYear(), month: d.getMonth() + 1, label: `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}` });
+    }
+
+    // Initialize months for each account
+    for (const accId of Object.keys(projection)) {
+      let previous = projection[accId].saldo_atual;
+      monthsList.forEach((m) => {
+        projection[accId].months.push({
+          month: `${m.year}-${String(m.month).padStart(2, '0')}`,
+          entradas: 0,
+          saidas: 0,
+          saldo_inicial: previous,
+          saldo_final: previous,
+          items: [] as any[]
+        });
+      });
+    }
+
+    // Add previsto transactions
+    for (const t of transPrevistosRes.rows) {
+      const date = new Date(t.data_transacao);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const label = `${year}-${String(month).padStart(2, '0')}`;
+      const accId = t.conta_id;
+      const idx = monthsList.findIndex(m => m.year === year && m.month === month);
+      if (idx >= 0 && projection[accId]) {
+        const v = parseFloat(String(t.valor || 0));
+        if (t.tipo === 'credito') {
+          projection[accId].months[idx].entradas += v;
+          projection[accId].months[idx].items.push({ type: 'credito', descricao: t.descricao, valor: v, origem: t.origem, referencia: t.referencia });
+        } else if (t.tipo === 'debito') {
+          projection[accId].months[idx].saidas += v;
+          projection[accId].months[idx].items.push({ type: 'debito', descricao: t.descricao, valor: v, origem: t.origem, referencia: t.referencia });
+        }
+      }
+    }
+
+    // Add faturas (include as debit on data_vencimento if not paid)
+    for (const f of faturasRes.rows) {
+      const date = new Date(f.data_vencimento);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const idx = monthsList.findIndex(m => m.year === year && m.month === month);
+      if (idx >= 0) {
+        const contaPagamentoId = f.conta_pagamento_id;
+        const v = parseFloat(String(f.valor_fechado || 0));
+        if (projection[contaPagamentoId]) {
+          projection[contaPagamentoId].months[idx].saidas += v;
+          projection[contaPagamentoId].months[idx].items.push({ type: 'debito', descricao: `Fatura ${f.cartao_apelido}`, valor: v, origem: `fatura:${f.id}`, referencia: `Fatura ${f.cartao_apelido}` });
+        }
+      }
+    }
+
+    // Add recurrences expanded
+    for (const rec of recorrenciasRes.rows) {
+      // For each month find occurrences
+      for (let i = 0; i < monthsList.length; i++) {
+        const m = monthsList[i];
+        const occs = occurrencesForRecurrence(rec, m.year, m.month);
+        for (const occ of occs) {
+          const accId = rec.conta_id;
+          const v = parseFloat(String(rec.valor || 0));
+          if (projection[accId]) {
+            projection[accId].months[i].items.push({ type: rec.tipo === 'credito' ? 'credito' : 'debito', descricao: rec.descricao, valor: v, origem: `recorrencia:${rec.id}` });
+            if (rec.tipo === 'credito') projection[accId].months[i].entradas += v; else projection[accId].months[i].saidas += v;
+          }
+        }
+      }
+    }
+
+    // Now compute saldo_final month by month per account
+    for (const accId of Object.keys(projection)) {
+      let running = projection[accId].saldo_atual;
+      projection[accId].months.forEach((m: any, idx: number) => {
+        m.saldo_inicial = running;
+        running = running + (m.entradas || 0) - (m.saidas || 0);
+        m.saldo_final = running;
+      });
+    }
+
+    // Consolidated
+    const consolidated: any = { months: monthsList.map(m => ({ month: m.label, entradas: 0, saidas: 0, saldo_inicial: 0, saldo_final: 0 })) };
+    // Sum initial saldo and build consolidated month entries
+    let totalInitial = 0;
+    Object.values(projection).forEach((p: any) => totalInitial += p.saldo_atual || 0);
+    consolidated.months[0].saldo_inicial = totalInitial;
+    for (let i = 0; i < monthsList.length; i++) {
+      let entradas = 0, saidas = 0;
+      for (const accId of Object.keys(projection)) {
+        entradas += projection[accId].months[i].entradas || 0;
+        saidas += projection[accId].months[i].saidas || 0;
+      }
+      consolidated.months[i].entradas = entradas;
+      consolidated.months[i].saidas = saidas;
+      if (i > 0) consolidated.months[i].saldo_inicial = consolidated.months[i-1].saldo_final;
+      const prev = consolidated.months[i].saldo_inicial || (i === 0 ? totalInitial : 0);
+      consolidated.months[i].saldo_final = prev + entradas - saidas;
+    }
+
+    res.json({ accounts: Object.values(projection), consolidated, months: monthsList.map(m => m.label) });
+  } catch (error: any) {
+    console.error('Erro ao calcular projeção:', error);
+    res.status(500).json({ error: error.message });
   }
 });
 

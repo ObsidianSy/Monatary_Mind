@@ -22,6 +22,7 @@ import { parseDate } from "@/lib/date-utils";
 import { TransactionFilters } from "@/components/transactions/TransactionFilters";
 import { TransactionSummary } from "@/components/transactions/TransactionSummary";
 import { TransactionList } from "@/components/transactions/TransactionList";
+import { InvoicesSection } from "@/components/InvoicesSection";
 import { useTransactionFilters } from "@/hooks/useTransactionFilters";
 import {
   Plus,
@@ -81,6 +82,7 @@ const transformAPITransaction = (
   accounts: any[] = [],
   categories: any[] = []
 ): Transaction => {
+    // Derivar forma de exibição para origem/pagamento
   const typeMap = {
     "credito": "income" as const,
     "debito": "expense" as const,
@@ -112,7 +114,54 @@ const transformAPITransaction = (
     account: apiTransaction.conta_nome || "Sem conta",
     date: new Date(apiTransaction.data_transacao),
     status: statusMap[apiTransaction.status] || "pending",
-    paymentMethod: apiTransaction.origem || "Não informado",
+    paymentMethod: (() => {
+      let pm = apiTransaction.origem || "Não informado";
+
+      if (apiTransaction.origem && apiTransaction.origem.startsWith('fatura_item')) {
+        if (apiTransaction.referencia) {
+          const match = String(apiTransaction.referencia).match(/Item fatura\s+(.+?)\s*-\s*(\d{4}-\d{2}-\d{2})/i);
+          if (match) {
+            const cartaoApelido = match[1].trim();
+            const dataCompraStr = match[2];
+            try {
+              const dt = new Date(dataCompraStr);
+              const mmYY = `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getFullYear()).slice(2)}`;
+              pm = `Cartão: ${cartaoApelido} ${mmYY}`;
+            } catch (e) {
+              pm = `Cartão: ${cartaoApelido}`;
+            }
+          } else {
+            const ref = String(apiTransaction.referencia || '');
+            pm = ref.replace(/^Item fatura\s*/i, 'Cartão: ') || 'Cartão - fatura';
+          }
+        } else {
+          pm = 'Cartão - fatura';
+        }
+      }
+
+      // If reference is a Fatura (A Pagar) reference like 'Fatura {card} - YYYY-MM', also format it
+      if ((apiTransaction.origem && apiTransaction.origem.startsWith('fatura:')) || (apiTransaction.referencia && /^Fatura\s+/i.test(apiTransaction.referencia || ''))) {
+        const ref = String(apiTransaction.referencia || '');
+        const match = ref.match(/Fatura\s+(.+?)\s*-?\s*(\d{4}-\d{2}-\d{2}|\d{4}-\d{2})?/i);
+        if (match) {
+          const cartaoNome = match[1].trim();
+          const dateStr = match[2];
+          if (dateStr) {
+            try {
+              const dt = new Date(dateStr.length === 7 ? `${dateStr}-01` : dateStr);
+              const mmYY = `${String(dt.getMonth() + 1).padStart(2, '0')}/${String(dt.getFullYear()).slice(2)}`;
+              pm = `Cartão: ${cartaoNome} ${mmYY}`;
+            } catch (e) {
+              pm = `Cartão: ${cartaoNome}`;
+            }
+          } else {
+            pm = `Cartão: ${cartaoNome}`;
+          }
+        }
+      }
+
+      return pm;
+    })(),
   };
 };
 
@@ -146,7 +195,7 @@ export default function Transacoes() {
 
   // Buscar contas e categorias para JOINs manuais
   const { accounts: rawAccounts } = useAccounts();
-  const { categories: rawCategories } = useCategories();
+  const { categories: rawCategories, subcategoriesForSelect } = useCategories();
 
   // ✅ Memoizar arrays para evitar re-renders desnecessários
   const accounts = useMemo(() => rawAccounts, [rawAccounts.length]);
@@ -655,8 +704,8 @@ export default function Transacoes() {
           <TabsTrigger value="recurring">Recorrências</TabsTrigger>
         </TabsList>
 
-        {/* Tabs para Todas, Efetivadas, A Receber e A Pagar */}
-        {["all", "completed", "receivable", "payable"].includes(activeTab) && (
+        {/* Tabs para Todas, Efetivadas e A Receber */}
+        {["all", "completed", "receivable"].includes(activeTab) && (
           <TabsContent value={activeTab} className="space-y-6 mt-6">
             {/* Filters */}
             <TransactionFilters
@@ -696,6 +745,61 @@ export default function Transacoes() {
             />
           </TabsContent>
         )}
+
+        {/* Tab A Pagar - Faturas de Cartões + Transações */}
+        <TabsContent value="payable" className="space-y-6 mt-6">
+          {/* Seção de Faturas de Cartões */}
+          <InvoicesSection />
+
+          {/* Divider */}
+          <div className="relative">
+            <div className="absolute inset-0 flex items-center">
+              <span className="w-full border-t" />
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-background px-2 text-muted-foreground">
+                Outras Transações a Pagar
+              </span>
+            </div>
+          </div>
+
+          {/* Filters */}
+          <TransactionFilters
+            activeTab={activeTab}
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            filterType={filterType}
+            onFilterTypeChange={setFilterType}
+            filterStatus={filterStatus}
+            onFilterStatusChange={setFilterStatus}
+            dateRange={dateRange}
+            onDateRangeChange={setDateRange}
+          />
+
+          {/* Summary Cards */}
+          <TransactionSummary
+            activeTab={activeTab}
+            transactions={sortedTransactions}
+            onNewTransaction={() => setIsNewTransactionModalOpen(true)}
+            onRefresh={loadTransactions}
+          />
+
+          {/* Transactions List */}
+          <TransactionList
+            transactions={sortedTransactions}
+            loading={loading}
+            error={error}
+            activeTab={activeTab}
+            selectedTransactions={selectedTransactions}
+            onSelectTransaction={handleSelectTransaction}
+            onSelectAll={handleSelectAll}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onRegistrar={handleRegistrarTransacao}
+            onRefresh={loadTransactions}
+            onNewTransaction={() => setIsNewTransactionModalOpen(true)}
+          />
+        </TabsContent>
 
         {/* Recorrências Tab */}
         <TabsContent value="recurring" className="space-y-6 mt-6">
@@ -771,20 +875,12 @@ export default function Transacoes() {
                   {activeRecurrences.map((recorrencia) => {
                     const conta = accounts.find(a => a.id === recorrencia.conta_id);
                     
-                    // Buscar categoria principal (se tiver subcategoria_id, buscar a subcategoria)
-                    const categoriaAtual = recorrencia.subcategoria_id 
-                      ? categories.find(c => c.id === recorrencia.subcategoria_id)
-                      : categories.find(c => c.id === recorrencia.categoria_id);
-                    
-                    // Se for subcategoria, buscar a categoria pai
-                    const categoriaPai = categoriaAtual?.parent_id 
-                      ? categories.find(c => c.id === categoriaAtual.parent_id)
-                      : null;
-                    
-                    // Montar o texto de exibição da categoria
-                    const categoriaDisplay = categoriaPai 
-                      ? `${categoriaPai.nome} > ${categoriaAtual?.nome}` 
-                      : categoriaAtual?.nome || "Sem categoria";
+                    // ✅ Usar dados do JOIN do backend (mais confiável que buscar no array local)
+                    // categoria_nome = nome da categoria/subcategoria
+                    // categoria_pai_nome = nome da categoria pai (se for subcategoria)
+                    const categoriaDisplay = recorrencia.categoria_pai_nome
+                      ? `${recorrencia.categoria_pai_nome} → ${recorrencia.categoria_nome}`
+                      : recorrencia.categoria_nome || "Sem categoria";
                     
                     const valor = typeof recorrencia.valor === 'string' ? parseFloat(recorrencia.valor) : recorrencia.valor;
 
@@ -963,6 +1059,8 @@ export default function Transacoes() {
                   valor: parseFloat(formData.get('valor') as string),
                   conta_id: formData.get('conta_id') as string,
                   categoria_id: formData.get('categoria_id') as string,
+                  tipo: formData.get('tipo') as any, // Campo obrigatório
+                  data_inicio: formData.get('data_inicio') as string, // Campo obrigatório
                   frequencia: formData.get('frequencia') as any,
                   dia_vencimento: parseInt(formData.get('dia_vencimento') as string) || undefined,
                 });
@@ -984,12 +1082,16 @@ export default function Transacoes() {
               }
             }}>
               <div className="grid gap-4 py-4">
+                {/* Campos ocultos obrigatórios */}
+                <input type="hidden" name="tipo" value={editingRecurrence?.tipo || 'debito'} />
+                <input type="hidden" name="data_inicio" value={editingRecurrence?.data_inicio || new Date().toISOString().split('T')[0]} />
+
                 <div className="grid gap-2">
                   <Label htmlFor="descricao">Descrição</Label>
                   <Input
                     id="descricao"
                     name="descricao"
-                    defaultValue={editingRecurrence.descricao}
+                    defaultValue={editingRecurrence?.descricao || ''}
                     required
                   />
                 </div>
@@ -1001,14 +1103,14 @@ export default function Transacoes() {
                     name="valor"
                     type="number"
                     step="0.01"
-                    defaultValue={typeof editingRecurrence.valor === 'string' ? editingRecurrence.valor : editingRecurrence.valor.toString()}
+                    defaultValue={editingRecurrence?.valor ? (typeof editingRecurrence.valor === 'string' ? editingRecurrence.valor : editingRecurrence.valor.toString()) : '0'}
                     required
                   />
                 </div>
 
                 <div className="grid gap-2">
                   <Label htmlFor="conta_id">Conta</Label>
-                  <Select name="conta_id" defaultValue={editingRecurrence.conta_id} required>
+                  <Select name="conta_id" defaultValue={editingRecurrence?.conta_id || ''} required>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a conta" />
                     </SelectTrigger>
@@ -1024,14 +1126,18 @@ export default function Transacoes() {
 
                 <div className="grid gap-2">
                   <Label htmlFor="categoria_id">Categoria</Label>
-                  <Select name="categoria_id" defaultValue={editingRecurrence.categoria_id || editingRecurrence.subcategoria_id} required>
+                  <Select 
+                    name="categoria_id" 
+                    defaultValue={editingRecurrence?.subcategoria_id || editingRecurrence?.categoria_id || ''} 
+                    required
+                  >
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a categoria" />
                     </SelectTrigger>
                     <SelectContent>
-                      {categories.map((cat) => (
-                        <SelectItem key={cat.id} value={cat.id}>
-                          {cat.nome}
+                      {subcategoriesForSelect.map((sub) => (
+                        <SelectItem key={sub.id} value={sub.id}>
+                          {sub.fullName}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1040,7 +1146,7 @@ export default function Transacoes() {
 
                 <div className="grid gap-2">
                   <Label htmlFor="frequencia">Frequência</Label>
-                  <Select name="frequencia" defaultValue={editingRecurrence.frequencia} required>
+                  <Select name="frequencia" defaultValue={editingRecurrence?.frequencia || 'mensal'} required>
                     <SelectTrigger>
                       <SelectValue placeholder="Selecione a frequência" />
                     </SelectTrigger>
@@ -1062,7 +1168,7 @@ export default function Transacoes() {
                     type="number"
                     min="1"
                     max="31"
-                    defaultValue={editingRecurrence.dia_vencimento || ''}
+                    defaultValue={editingRecurrence?.dia_vencimento || ''}
                     placeholder="Ex: 10"
                   />
                 </div>

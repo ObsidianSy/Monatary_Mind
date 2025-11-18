@@ -32,7 +32,7 @@ import Cartoes from "./pages/Cartoes";
 import ComprasCartao from "./pages/ComprasCartao";
 import Categorias from "./pages/Categorias";
 import Parcelas from "./pages/Parcelas";
-import Projecao from "./pages/Projecao";
+import Projecao from "./pages/ProjecaoDetalhada";
 import Relatorios from "./pages/Relatorios";
 import Alertas from "./pages/Alertas";
 import Configuracoes from "./pages/Configuracoes";

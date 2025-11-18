@@ -34,6 +34,7 @@ import { ptBR } from "date-fns/locale";
 import { useCreditCards, useInvoices, useInvoiceItems, useCreditPurchases } from "@/hooks/useFinancialData";
 import type { CreditCard } from "@/types/financial";
 import { useAccounts } from "@/hooks/useAccounts";
+import { apiClient } from "@/lib/financeiro-sdk";
 import { useCategories } from "@/hooks/useCategories";
 import { usePrivacy } from "@/contexts/PrivacyContext";
 import NewCardModal from "@/components/NewCardModal";
@@ -508,10 +509,7 @@ export default function CartoesPage() {
     const handleDeleteInvoice = async () => {
       if (!currentInvoice) return;
       try {
-        const res = await fetch(`/api/faturas/${currentInvoice.id}`, {
-          method: 'DELETE',
-        });
-        if (!res.ok) throw new Error('Erro ao excluir fatura');
+        await apiClient.http(`/faturas/${currentInvoice.id}`, { method: 'DELETE' });
         toast({
           title: 'Fatura excluída',
           description: 'A fatura foi removida com sucesso.',
@@ -1423,7 +1421,7 @@ export default function CartoesPage() {
                   >
                     <option value="aberta">Aberta</option>
                     <option value="fechada">Fechada</option>
-                    <option value="paga">Paga</option>
+                    {/* Status 'paga' deve ser aplicado via ação de pagamento (evento) */}
                   </select>
                 </div>
               </div>
@@ -1433,12 +1431,10 @@ export default function CartoesPage() {
                 </Button>
                 <Button variant="default" onClick={async () => {
                   try {
-                    const res = await fetch(`/api/faturas/${currentInvoice.id}`, {
+                    await apiClient.http(`/faturas/${currentInvoice.id}`, {
                       method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
                       body: JSON.stringify(editInvoiceForm),
                     });
-                    if (!res.ok) throw new Error('Erro ao editar fatura');
                     toast({ title: 'Fatura atualizada', description: 'Alterações salvas com sucesso.' });
                     setIsEditInvoiceModalOpen(false);
                     refresh();
@@ -1591,11 +1587,11 @@ export default function CartoesPage() {
               />
 
               {/* Ações do cartão */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <Button
                   size="sm"
                   variant="outline"
-                  className="flex-1"
+                  className="w-auto min-w-[110px]"
                   onClick={() => {
                     setSelectedCard(card);
                     setIsAddPurchaseModalOpen(true);
@@ -1608,6 +1604,7 @@ export default function CartoesPage() {
                   <Button
                     size="sm"
                     variant="outline"
+                    className="w-auto min-w-[90px]"
                     onClick={() => {
                       setSelectedCard(card);
                       setIsInvoiceActionsModalOpen(true);
@@ -1620,6 +1617,7 @@ export default function CartoesPage() {
                 {currentInvoice?.status === "fechada" && (
                   <Button
                     size="sm"
+                    className="w-auto min-w-[80px]"
                     onClick={() => {
                       setSelectedCard(card);
                       setIsPayInvoiceModalOpen(true);
@@ -1632,6 +1630,7 @@ export default function CartoesPage() {
                 <Button
                   size="sm"
                   variant="destructive"
+                  className="w-auto"
                   onClick={() => {
                     setCardToDelete(card);
                     setIsDeleteCardModalOpen(true);

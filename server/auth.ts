@@ -41,9 +41,11 @@ export interface AuthRequest extends Request {
 }
 
 export interface JWTPayload {
-  userId: string;
+  userId?: string; // Formato novo
+  id?: string;     // Formato legado (compatibilidade)
   email: string;
-  nome: string;
+  nome?: string;
+  role?: string;   // Compatibilidade com tokens antigos
   tenantId?: string; // tenant_id do workspace selecionado
 }
 
@@ -103,9 +105,23 @@ export function authenticateToken(pool: Pool) {
         });
       }
 
+      // Compatibilidade: aceitar tanto userId quanto id
+      const userId = payload.userId || payload.id;
+      
+      if (!userId) {
+        console.error('❌ Token sem ID válido:', payload);
+        return res.status(401).json({
+          success: false,
+          error: 'Token inválido: ID de usuário ausente'
+        });
+      }
+
+      console.log('🔐 authenticateToken: userId extraído:', userId);
+
       // Buscar usuário completo com roles e permissões
-      const user = await getUserWithPermissions(pool, payload.userId);
+      const user = await getUserWithPermissions(pool, userId);
       if (!user) {
+        console.error('❌ Usuário não encontrado no banco:', userId);
         return res.status(401).json({
           success: false,
           error: 'Usuário não encontrado'
@@ -211,42 +227,49 @@ export async function getUserByEmail(pool: Pool, email: string): Promise<any | n
 }
 
 export async function getUserWithPermissions(pool: Pool, userId: string): Promise<UserWithRoles | null> {
-  // Buscar usuário
-  const userResult = await pool.query(
-    'SELECT id, email, nome, ativo, email_verificado, ultimo_acesso, created_at FROM financeiro.usuario WHERE id = $1',
-    [userId]
-  );
+  try {
+    // Buscar usuário (com cast explícito para UUID)
+    const userResult = await pool.query(
+      'SELECT id, email, nome, ativo, email_verificado, ultimo_acesso, created_at FROM financeiro.usuario WHERE id = $1::uuid',
+      [userId]
+    );
 
-  if (userResult.rows.length === 0) {
-    return null;
+    if (userResult.rows.length === 0) {
+      console.warn(`⚠️ getUserWithPermissions: Usuário ${userId} não encontrado`);
+      return null;
+    }
+
+    const user = userResult.rows[0];
+
+    // Buscar roles
+    const rolesResult = await pool.query(
+      `SELECT r.id, r.nome, r.nivel_acesso
+       FROM financeiro.role r
+       JOIN financeiro.user_role ur ON r.id = ur.role_id
+       WHERE ur.usuario_id = $1::uuid`,
+      [userId]
+    );
+
+    // Buscar permissões
+    const permissionsResult = await pool.query(
+      `SELECT DISTINCT p.recurso, p.acao
+       FROM financeiro.permission p
+       JOIN financeiro.role_permission rp ON p.id = rp.permission_id
+       JOIN financeiro.user_role ur ON rp.role_id = ur.role_id
+       WHERE ur.usuario_id = $1::uuid`,
+      [userId]
+    );
+
+    return {
+      ...user,
+      roles: rolesResult.rows,
+      permissions: permissionsResult.rows
+    };
+  } catch (error: any) {
+    console.error('❌ Erro em getUserWithPermissions:', error.message);
+    console.error('   userId fornecido:', userId, 'tipo:', typeof userId);
+    throw error;
   }
-
-  const user = userResult.rows[0];
-
-  // Buscar roles
-  const rolesResult = await pool.query(
-    `SELECT r.id, r.nome, r.nivel_acesso
-     FROM financeiro.role r
-     JOIN financeiro.user_role ur ON r.id = ur.role_id
-     WHERE ur.usuario_id = $1`,
-    [userId]
-  );
-
-  // Buscar permissões
-  const permissionsResult = await pool.query(
-    `SELECT DISTINCT p.recurso, p.acao
-     FROM financeiro.permission p
-     JOIN financeiro.role_permission rp ON p.id = rp.permission_id
-     JOIN financeiro.user_role ur ON rp.role_id = ur.role_id
-     WHERE ur.usuario_id = $1`,
-    [userId]
-  );
-
-  return {
-    ...user,
-    roles: rolesResult.rows,
-    permissions: permissionsResult.rows
-  };
 }
 
 export async function createUser(

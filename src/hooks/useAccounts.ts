@@ -7,6 +7,7 @@ export interface Account {
   nome: string;
   tipo: "corrente" | "poupanca" | "fundo_caixa" | "cartao_credito" | "caixa" | "conta_pagamento" | "investimento";
   saldo_inicial: string | number;
+  saldo_atual?: string | number;
   ativo?: boolean;
   is_deleted?: boolean;
   tenant_id?: string;
@@ -17,7 +18,7 @@ export function useAccounts() {
   const client = useFinanceiroClient({ tenantId: "obsidian" });
   const { data: accounts, loading, error, refresh } = useFinanceiroRead<Account>(
     client,
-    "conta",
+    "saldo_conta",
     {},
     []
   );

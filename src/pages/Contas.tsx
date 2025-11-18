@@ -35,6 +35,7 @@ const tipoColors = {
 
 export default function Contas() {
   const [showNewAccountModal, setShowNewAccountModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<any | null>(null);
   const { accounts, activeAccounts, loading, error, refresh } = useAccounts();
   const { toast } = useToast();
   const client = useFinanceiroClient({ tenantId: "obsidian" });
@@ -110,7 +111,9 @@ export default function Contas() {
   }
 
   const totalSaldo = activeAccounts.reduce((sum, account) => {
-    const saldo = typeof account.saldo_inicial === 'string' ? parseFloat(account.saldo_inicial) : account.saldo_inicial;
+    const saldo = account.saldo_atual !== undefined
+      ? (typeof account.saldo_atual === 'string' ? parseFloat(account.saldo_atual) : account.saldo_atual)
+      : (typeof account.saldo_inicial === 'string' ? parseFloat(account.saldo_inicial) : account.saldo_inicial);
     return sum + (saldo || 0);
   }, 0);
 
@@ -224,7 +227,7 @@ export default function Contas() {
                     </TableCell>
                     <TableCell>
                       <ValueDisplay 
-                        value={account.saldo_inicial}
+                        value={account.saldo_atual !== undefined ? account.saldo_atual : account.saldo_inicial}
                         showTrend
                         size="sm"
                       />
@@ -240,11 +243,8 @@ export default function Contas() {
                           variant="outline"
                           size="sm"
                           onClick={() => {
-                            // TODO: Implementar edição de conta
-                            toast({
-                              title: "Em desenvolvimento",
-                              description: "Funcionalidade de edição será implementada em breve.",
-                            });
+                            setEditingAccount(account);
+                            setShowNewAccountModal(true);
                           }}
                         >
                           <Edit className="w-4 h-4" />
@@ -293,8 +293,12 @@ export default function Contas() {
 
       <NewAccountModal
         open={showNewAccountModal}
-        onOpenChange={setShowNewAccountModal}
+        onOpenChange={(open) => {
+          if (!open) setEditingAccount(null);
+          setShowNewAccountModal(open);
+        }}
         onSuccess={refresh}
+        editingAccount={editingAccount}
       />
     </div>
   );

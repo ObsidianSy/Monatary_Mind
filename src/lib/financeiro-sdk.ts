@@ -42,16 +42,20 @@ export class FinanceiroSDK {
   }
 
   buildHeaders(extra?: Record<string, string>): Record<string, string> {
+    // Pega o token do localStorage se não tiver apiKey
+    const token = this.apiKey || localStorage.getItem('token');
+    
     const h: Record<string, string> = {
       "Content-Type": "application/json",
       "Accept": "application/json",
       ...(extra || {})
     };
 
-    // Pega o token do localStorage se não tiver apiKey
-    const token = this.apiKey || localStorage.getItem('token');
     if (token) {
       h.Authorization = `Bearer ${token}`;
+      console.debug('🔑 Token incluído no header:', token.substring(0, 20) + '...');
+    } else {
+      console.warn('⚠️ Token não encontrado! Requisição será 401.');
     }
 
     return h;
@@ -78,7 +82,9 @@ export class FinanceiroSDK {
     for (let attempt = 1; attempt <= retries; attempt++) {
       try {
         const url = `${this.baseUrl}${path}`;
-        const res = await this.withTimeout(fetch(url, init));
+        // Garantir que headers sejam injetados (incluindo Authorization)
+        const headers = this.buildHeaders(init.headers as Record<string, string>);
+        const res = await this.withTimeout(fetch(url, { ...init, headers }));
         const text = await res.text();
         const json = text ? safeJson(text) : undefined;
 
@@ -156,8 +162,8 @@ export class FinanceiroSDK {
       'recorrencia.delete': { endpoint: '/recorrencias', method: 'DELETE', useId: true },
       'parcela.upsert': { endpoint: '/parcelas', method: 'POST' },
       'fatura_item.upsert': { endpoint: '/compras', method: 'POST' },
-      'fatura.fechar': { endpoint: '/faturas/fechar', method: 'POST' },
-      'fatura.pagar': { endpoint: '/faturas/pagar', method: 'POST' },
+      'fatura.fechar': { endpoint: '/events/fatura.fechar', method: 'POST' },
+      'fatura.pagar': { endpoint: '/events/fatura.pagar', method: 'POST' },
       // Nota: Eventos de equipamentos/estoque devem usar seus próprios SDKs (EquipamentosSDK, EstoqueSDK)
       // não o FinanceiroSDK, pois têm endpoints separados gerenciados por outros módulos
     };

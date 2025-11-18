@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,12 @@ interface NewAccountModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSuccess?: () => void;
+  editingAccount?: {
+    id: string;
+    nome: string;
+    tipo: string;
+    saldo_inicial: string | number;
+  } | null;
 }
 
 interface AccountForm {
@@ -31,7 +37,7 @@ const tiposConta = [
   { value: "investimento", label: "Investimentos" },
 ];
 
-export default function NewAccountModal({ open, onOpenChange, onSuccess }: NewAccountModalProps) {
+export default function NewAccountModal({ open, onOpenChange, onSuccess, editingAccount }: NewAccountModalProps) {
   const [form, setForm] = useState<AccountForm>({
     nome: "",
     tipo: "",
@@ -43,8 +49,8 @@ export default function NewAccountModal({ open, onOpenChange, onSuccess }: NewAc
   const { postEvent, posting } = usePostEvent(client, {
     onSuccess: () => {
       toast({
-        title: "Conta criada",
-        description: "A conta foi adicionada com sucesso.",
+        title: editingAccount?.id ? "Conta atualizada" : "Conta criada",
+        description: editingAccount?.id ? "Alterações salvas com sucesso." : "A conta foi adicionada com sucesso.",
       });
       resetForm();
       onOpenChange(false);
@@ -67,6 +73,18 @@ export default function NewAccountModal({ open, onOpenChange, onSuccess }: NewAc
     });
   };
 
+  useEffect(() => {
+    if (editingAccount && open) {
+      setForm({
+        nome: editingAccount.nome || "",
+        tipo: editingAccount.tipo || "",
+        saldo_inicial: String(editingAccount.saldo_inicial || ""),
+      });
+    } else if (!open) {
+      resetForm();
+    }
+  }, [editingAccount, open]);
+
   const handleSubmit = async () => {
     const validationData = {
       nome: form.nome,
@@ -86,10 +104,14 @@ export default function NewAccountModal({ open, onOpenChange, onSuccess }: NewAc
       return;
     }
 
-    const payload = {
+    const payload: any = {
       ...validation.data,
       ativo: true,
     };
+    // If editing, include id
+    if (editingAccount?.id) {
+      payload.id = editingAccount.id;
+    }
 
     try {
       await postEvent("conta.upsert", payload);
@@ -106,9 +128,9 @@ export default function NewAccountModal({ open, onOpenChange, onSuccess }: NewAc
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Nova Conta</DialogTitle>
+          <DialogTitle>{editingAccount?.id ? "Editar Conta" : "Nova Conta"}</DialogTitle>
           <DialogDescription>
-            Adicione uma nova conta financeira
+            {editingAccount?.id ? "Atualize os dados da sua conta" : "Adicione uma nova conta financeira"}
           </DialogDescription>
         </DialogHeader>
 
@@ -158,7 +180,7 @@ export default function NewAccountModal({ open, onOpenChange, onSuccess }: NewAc
           </Button>
           <Button onClick={handleSubmit} disabled={posting}>
             {posting && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-            Criar Conta
+            {editingAccount?.id ? 'Atualizar Conta' : 'Criar Conta'}
           </Button>
         </DialogFooter>
       </DialogContent>

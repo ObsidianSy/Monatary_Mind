@@ -300,6 +300,18 @@ WHERE t.status = 'previsto'
   AND t.data_vencimento >= CURRENT_DATE
 ORDER BY t.data_vencimento;
 
+-- View de saldo por conta (usada em projeções)
+CREATE OR REPLACE VIEW financeiro.vw_saldo_por_conta AS
+SELECT 
+    c.id as conta_id,
+    c.nome as conta_nome,
+    c.tipo,
+    c.saldo_inicial +
+    COALESCE((SELECT SUM(valor) FROM financeiro.transacao WHERE conta_id = c.id AND tipo = 'credito' AND status = 'liquidado'), 0) -
+    COALESCE((SELECT SUM(valor) FROM financeiro.transacao WHERE conta_id = c.id AND tipo = 'debito' AND status = 'liquidado'), 0) as saldo_atual
+FROM financeiro.conta c
+WHERE c.is_deleted = false;
+
 COMMENT ON TABLE financeiro.conta IS 'Contas bancárias, carteiras e investimentos';
 COMMENT ON TABLE financeiro.categoria IS 'Categorias e subcategorias de transações';
 COMMENT ON TABLE financeiro.transacao IS 'Lançamentos financeiros (ledger)';
