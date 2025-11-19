@@ -137,6 +137,7 @@ export default function Contas() {
         <ActionableCard
           title="Total de Contas"
           value={activeAccounts.length}
+          valueType="count"
           icon={<Wallet className="w-5 h-5" />}
           status="info"
         />
@@ -157,6 +158,7 @@ export default function Contas() {
         <ActionableCard
           title="Contas Ativas"
           value={activeAccounts.length}
+          valueType="count"
           icon={<TrendingUp className="w-5 h-5" />}
           status="default"
           actions={[

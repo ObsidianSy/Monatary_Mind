@@ -33,6 +33,7 @@ import ComprasCartao from "./pages/ComprasCartao";
 import Categorias from "./pages/Categorias";
 import Parcelas from "./pages/Parcelas";
 import Projecao from "./pages/ProjecaoDetalhada";
+import ProjecaoMensal from "./pages/ProjecaoMensal";
 import Relatorios from "./pages/Relatorios";
 import Alertas from "./pages/Alertas";
 import Configuracoes from "./pages/Configuracoes";
@@ -150,6 +151,7 @@ const AppContent = () => {
                   <Route path="/compras-cartao" element={<ComprasCartao />} />
                   <Route path="/parcelas" element={<Parcelas />} />
                   <Route path="/projecao" element={<Projecao />} />
+                  <Route path="/projecao-mensal" element={<ProjecaoMensal />} />
                   <Route path="/relatorios" element={<Relatorios />} />
                   <Route path="/alertas" element={<Alertas />} />
                   <Route path="/categorias" element={<Categorias />} />

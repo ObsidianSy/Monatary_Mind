@@ -50,15 +50,24 @@ export function InvoicesSection({ className }: InvoicesSectionProps) {
   // Competência selecionada (formato YYYY-MM)
   const selectedCompetencia = format(selectedMonth, "yyyy-MM");
 
-  // Filtrar faturas do mês selecionado (backend envia competencia como YYYY-MM-01)
+  // Filtrar faturas do mês selecionado
+  // ⚠️ IMPORTANTE: Filtrar por DATA DE VENCIMENTO, não competência
+  // Para "A Pagar", o que importa é quando a conta vence
   const monthInvoices = useMemo(() => {
+    const monthStart = startOfMonth(selectedMonth);
+    const monthEnd = addMonths(monthStart, 1);
+    
     return (invoices || []).filter((invoice) => {
-      if (!invoice?.competencia) return false;
-      const comp = String(invoice.competencia);
-      const compKey = comp.length >= 7 ? comp.slice(0, 7) : format(new Date(comp), "yyyy-MM");
-      return compKey === selectedCompetencia;
+      if (!invoice?.data_vencimento) return false;
+      
+      try {
+        const vencimento = new Date(invoice.data_vencimento);
+        return vencimento >= monthStart && vencimento < monthEnd;
+      } catch {
+        return false;
+      }
     });
-  }, [invoices, selectedCompetencia]);
+  }, [invoices, selectedMonth]);
 
   // Agrupar faturas por cartão
   const invoicesByCard = useMemo(() => {
@@ -217,7 +226,7 @@ export function InvoicesSection({ className }: InvoicesSectionProps) {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-3">
           {Object.entries(invoicesByCard).map(([cardId, cardInvoices]) => {
             const card = activeCards.find(c => c.id === cardId);
             const invoice = cardInvoices[0]; // Deveria ter apenas 1 fatura por cartão/mês
@@ -264,70 +273,72 @@ export function InvoicesSection({ className }: InvoicesSectionProps) {
                   vencida && "border-destructive"
                 )}
               >
-                <CardHeader className="pb-3">
+                <CardHeader className="pb-2 p-3">
                   <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <CardTitle className="text-base flex items-center gap-2">
-                        <CreditCard className="w-4 h-4" />
-                        {card.apelido}
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-sm flex items-center gap-1.5 truncate">
+                        <CreditCard className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{card.apelido}</span>
                       </CardTitle>
-                      <CardDescription className="mt-1">
+                      <CardDescription className="text-xs mt-0.5">
                         {card.bandeira.toUpperCase()}
                       </CardDescription>
                     </div>
-                    {getStatusBadge(invoice.status)}
+                    <div className="ml-2 flex-shrink-0">
+                      {getStatusBadge(invoice.status)}
+                    </div>
                   </div>
                 </CardHeader>
                 
-                <CardContent className="space-y-3">
-                  <div className="space-y-2">
-                    <div className="flex justify-between text-sm">
-                      <span className="text-muted-foreground">Valor Total:</span>
-                      <span className="font-semibold">R$ {formatCurrency(valorTotal)}</span>
+                <CardContent className="space-y-2 p-3 pt-0">
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between text-xs">
+                      <span className="text-muted-foreground">Total:</span>
+                      <span className="font-semibold text-sm">R$ {formatCurrency(valorTotal)}</span>
                     </div>
                     
                     {invoice.status === 'fechada' || invoice.status === 'paga' ? (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Valor Fechado:</span>
-                        <span className="font-bold text-lg">R$ {formatCurrency(valorFechado)}</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Fechado:</span>
+                        <span className="font-bold text-sm">R$ {formatCurrency(valorFechado)}</span>
                       </div>
                     ) : null}
                     
                     {dataVencimento && (
-                      <div className="flex justify-between text-sm">
-                        <span className="text-muted-foreground">Vencimento:</span>
+                      <div className="flex justify-between text-xs">
+                        <span className="text-muted-foreground">Vence:</span>
                         <span className={cn(
-                          "font-medium",
-                          vencida && "text-destructive"
+                          "font-medium text-xs",
+                          vencida && "text-destructive font-semibold"
                         )}>
-                          {format(dataVencimento, "dd/MM/yyyy")}
+                          {format(dataVencimento, "dd/MM/yy")}
                         </span>
                       </div>
                     )}
                   </div>
 
                   {vencida && (
-                    <div className="flex items-center gap-2 text-xs text-destructive bg-destructive/10 px-2 py-1 rounded">
-                      <AlertCircle className="w-3 h-3" />
-                      <span>Fatura vencida</span>
+                    <div className="flex items-center gap-1.5 text-xs text-destructive bg-destructive/10 px-2 py-1 rounded">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                      <span>Vencida</span>
                     </div>
                   )}
 
-                  <div className="flex gap-2 pt-2">
+                  <div className="flex gap-1.5 pt-2">
                     <Button 
                       variant="outline" 
                       size="sm" 
-                      className="flex-1"
+                      className="flex-1 h-7 text-xs"
                       onClick={() => handleOpenDetailsModal(invoice)}
                     >
                       <Eye className="w-3 h-3 mr-1" />
-                      Detalhes
+                      Ver
                     </Button>
                     
                     {invoice.status === 'fechada' && (
                       <Button 
                         size="sm" 
-                        className="flex-1"
+                        className="flex-1 h-7 text-xs"
                         onClick={() => handleOpenPayModal(invoice)}
                         disabled={posting}
                       >

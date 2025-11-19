@@ -55,9 +55,20 @@ export function authenticateToken(pool) {
                     error: 'Token inválido ou expirado'
                 });
             }
+            // Compatibilidade: aceitar tanto userId quanto id
+            const userId = payload.userId || payload.id;
+            if (!userId) {
+                console.error('❌ Token sem ID válido:', payload);
+                return res.status(401).json({
+                    success: false,
+                    error: 'Token inválido: ID de usuário ausente'
+                });
+            }
+            console.log('🔐 authenticateToken: userId extraído:', userId);
             // Buscar usuário completo com roles e permissões
-            const user = await getUserWithPermissions(pool, payload.userId);
+            const user = await getUserWithPermissions(pool, userId);
             if (!user) {
+                console.error('❌ Usuário não encontrado no banco:', userId);
                 return res.status(401).json({
                     success: false,
                     error: 'Usuário não encontrado'
@@ -68,6 +79,10 @@ export function authenticateToken(pool) {
                     success: false,
                     error: 'Usuário desativado'
                 });
+            }
+            // Anexar tenantId do token ao user (se existir)
+            if (payload.tenantId) {
+                user.tenantId = payload.tenantId;
             }
             // Anexar usuário à requisição
             req.user = user;
@@ -141,28 +156,36 @@ export async function getUserByEmail(pool, email) {
     return result.rows[0] || null;
 }
 export async function getUserWithPermissions(pool, userId) {
-    // Buscar usuário
-    const userResult = await pool.query('SELECT id, email, nome, ativo, email_verificado, ultimo_acesso, created_at FROM financeiro.usuario WHERE id = $1', [userId]);
-    if (userResult.rows.length === 0) {
-        return null;
+    try {
+        // Buscar usuário (com cast explícito para UUID)
+        const userResult = await pool.query('SELECT id, email, nome, ativo, email_verificado, ultimo_acesso, created_at FROM financeiro.usuario WHERE id = $1::uuid', [userId]);
+        if (userResult.rows.length === 0) {
+            console.warn(`⚠️ getUserWithPermissions: Usuário ${userId} não encontrado`);
+            return null;
+        }
+        const user = userResult.rows[0];
+        // Buscar roles
+        const rolesResult = await pool.query(`SELECT r.id, r.nome, r.nivel_acesso
+       FROM financeiro.role r
+       JOIN financeiro.user_role ur ON r.id = ur.role_id
+       WHERE ur.usuario_id = $1::uuid`, [userId]);
+        // Buscar permissões
+        const permissionsResult = await pool.query(`SELECT DISTINCT p.recurso, p.acao
+       FROM financeiro.permission p
+       JOIN financeiro.role_permission rp ON p.id = rp.permission_id
+       JOIN financeiro.user_role ur ON rp.role_id = ur.role_id
+       WHERE ur.usuario_id = $1::uuid`, [userId]);
+        return {
+            ...user,
+            roles: rolesResult.rows,
+            permissions: permissionsResult.rows
+        };
     }
-    const user = userResult.rows[0];
-    // Buscar roles
-    const rolesResult = await pool.query(`SELECT r.id, r.nome, r.nivel_acesso
-     FROM financeiro.role r
-     JOIN financeiro.user_role ur ON r.id = ur.role_id
-     WHERE ur.usuario_id = $1`, [userId]);
-    // Buscar permissões
-    const permissionsResult = await pool.query(`SELECT DISTINCT p.recurso, p.acao
-     FROM financeiro.permission p
-     JOIN financeiro.role_permission rp ON p.id = rp.permission_id
-     JOIN financeiro.user_role ur ON rp.role_id = ur.role_id
-     WHERE ur.usuario_id = $1`, [userId]);
-    return {
-        ...user,
-        roles: rolesResult.rows,
-        permissions: permissionsResult.rows
-    };
+    catch (error) {
+        console.error('❌ Erro em getUserWithPermissions:', error.message);
+        console.error('   userId fornecido:', userId, 'tipo:', typeof userId);
+        throw error;
+    }
 }
 export async function createUser(pool, email, password, nome, roleNames = ['USER']) {
     // Hash da senha

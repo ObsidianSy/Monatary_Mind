@@ -9,6 +9,8 @@ interface ActionableCardProps {
   title: string;
   description?: string;
   value?: string | number;
+  // Define como o valor deve ser formatado: 'currency' (default), 'count', 'raw'
+  valueType?: 'currency' | 'count' | 'raw';
   status?: "success" | "warning" | "error" | "info" | "default";
   priority?: "high" | "medium" | "low";
   icon?: ReactNode;
@@ -56,6 +58,7 @@ export function ActionableCard({
   title,
   description,
   value,
+  valueType = 'currency',
   status = "default",
   priority,
   icon,
@@ -74,6 +77,12 @@ export function ActionableCard({
       if (isNaN(val)) {
         console.warn('ActionableCard: valor NaN detectado');
         return 'R$ 0,00';
+      }
+      if (valueType === 'count') {
+        return censorValue(String(val), isValuesCensored);
+      }
+      if (valueType === 'raw') {
+        return censorValue(String(val), isValuesCensored);
       }
       const formatted = formatCurrency(val);
       return censorValue(formatted, isValuesCensored);
@@ -134,7 +143,7 @@ export function ActionableCard({
       </CardHeader>
       
       <CardContent className={cn("space-y-3", compact && "space-y-2")}>
-        {value && (
+        {typeof value !== 'undefined' && value !== null && (
           <div className={cn(
             "text-2xl font-bold",
             statusTextColors[status],

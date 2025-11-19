@@ -234,6 +234,16 @@ export default function Transacoes() {
     sortedTransactions
   } = useTransactionFilters(transactions);
 
+  // ✅ Para aba "A Pagar", inverter ordem (mais antigas primeiro)
+  const displayTransactions = useMemo(() => {
+    if (activeTab === 'payable') {
+      // ASC: mais antiga primeiro (vencimentos próximos no topo)
+      return [...sortedTransactions].reverse();
+    }
+    // Demais abas: DESC (mais recente primeiro)
+    return sortedTransactions;
+  }, [sortedTransactions, activeTab]);
+
   // Load transactions from API (useCallback para evitar loop infinito)
   const loadTransactions = useCallback(async () => {
     try {
@@ -241,7 +251,8 @@ export default function Transacoes() {
       setError(null);
 
       const filters: any = {
-        limit: 100,
+        // Aumentar limite para evitar truncamento de totais
+        limit: 10000,
         offset: 0,
         // ✅ Usar dateRange do filtro (padrão: Este mês)
         from: format(dateRange.from, "yyyy-MM-dd"),
@@ -270,12 +281,29 @@ export default function Transacoes() {
 
       const apiTransactions = await apiClient.getTransactions(filters);
 
+      // 🔥 DEBUG: Calcular totais ANTES de transformar
+      const creditos = apiTransactions.filter(t => t.tipo === 'credito');
+      const totalCreditos = creditos.reduce((sum, t) => {
+        const valor = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor;
+        return sum + Math.abs(valor || 0);
+      }, 0);
+
       // ✅ Debug log para identificar duplicatas
-      console.debug("DEBUG Transações - Carregadas da API:", {
+      console.debug("🔥 DEBUG TRANSAÇÕES - Carregadas da API:", {
         total: apiTransactions.length,
+        creditos: creditos.length,
+        totalCreditos: totalCreditos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
         filtros: filters,
         tab: activeTab,
-        duplicatas: apiTransactions.length - new Set(apiTransactions.map(t => t.id)).size
+        duplicatas: apiTransactions.length - new Set(apiTransactions.map(t => t.id)).size,
+        primeiros5Creditos: creditos.slice(0, 5).map(t => ({
+          id: t.id,
+          data: t.data_transacao,
+          valor: t.valor,
+          descricao: t.descricao,
+          status: t.status,
+          categoria: t.categoria_pai_nome || t.categoria_nome
+        }))
       });
 
       setApiTransactions(apiTransactions);
@@ -365,9 +393,9 @@ export default function Transacoes() {
 
   const handleSelectAll = () => {
     setSelectedTransactions(
-      selectedTransactions.size === sortedTransactions.length
+      selectedTransactions.size === displayTransactions.length
         ? new Set()
-        : new Set(sortedTransactions.map(t => t.id))
+        : new Set(displayTransactions.map(t => t.id))
     );
   };
 
@@ -723,14 +751,14 @@ export default function Transacoes() {
             {/* Summary Cards */}
             <TransactionSummary
               activeTab={activeTab}
-              transactions={sortedTransactions}
+              transactions={displayTransactions}
               onNewTransaction={() => setIsNewTransactionModalOpen(true)}
               onRefresh={loadTransactions}
             />
 
             {/* Transactions List */}
             <TransactionList
-              transactions={sortedTransactions}
+              transactions={displayTransactions}
               loading={loading}
               error={error}
               activeTab={activeTab}
@@ -748,6 +776,14 @@ export default function Transacoes() {
 
         {/* Tab A Pagar - Faturas de Cartões + Transações */}
         <TabsContent value="payable" className="space-y-6 mt-6">
+          {/* Summary Cards - MOVIDO PARA CIMA */}
+          <TransactionSummary
+            activeTab={activeTab}
+            transactions={displayTransactions}
+            onNewTransaction={() => setIsNewTransactionModalOpen(true)}
+            onRefresh={loadTransactions}
+          />
+
           {/* Seção de Faturas de Cartões */}
           <InvoicesSection />
 
@@ -776,17 +812,9 @@ export default function Transacoes() {
             onDateRangeChange={setDateRange}
           />
 
-          {/* Summary Cards */}
-          <TransactionSummary
-            activeTab={activeTab}
-            transactions={sortedTransactions}
-            onNewTransaction={() => setIsNewTransactionModalOpen(true)}
-            onRefresh={loadTransactions}
-          />
-
           {/* Transactions List */}
           <TransactionList
-            transactions={sortedTransactions}
+            transactions={displayTransactions}
             loading={loading}
             error={error}
             activeTab={activeTab}

@@ -1,23 +1,30 @@
 import { Pool } from 'pg';
 import dotenv from 'dotenv';
-dotenv.config();
+// Carregar variáveis de ambiente do arquivo .env em desenvolvimento
+if (process.env.NODE_ENV !== 'production') {
+    dotenv.config();
+}
 // Configuração da conexão com PostgreSQL
 export const pool = new Pool({
-    host: process.env.DB_HOST || '72.60.147.138',
-    port: parseInt(process.env.DB_PORT || '5455'),
-    database: process.env.DB_NAME || 'docker',
+    host: process.env.DB_HOST || 'localhost',
+    port: parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME || 'financeiro',
     user: process.env.DB_USER || 'postgres',
     password: process.env.DB_PASSWORD,
     ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : false,
     max: 20, // Máximo de conexões no pool
     idleTimeoutMillis: 30000,
     connectionTimeoutMillis: 10000,
-    // Usar schema financeiro por padrão
-    options: '-c search_path=financeiro,public',
 });
-// Testa a conexão ao iniciar
-pool.on('connect', () => {
-    console.log('✅ Conectado ao PostgreSQL');
+// Testa a conexão ao iniciar e define search_path
+pool.on('connect', async (client) => {
+    try {
+        await client.query('SET search_path TO financeiro, equipamentos, estoque, public');
+        console.log('✅ Conectado ao PostgreSQL com search_path=financeiro,equipamentos,estoque,public');
+    }
+    catch (error) {
+        console.error('❌ Erro ao configurar search_path:', error);
+    }
 });
 pool.on('error', (err) => {
     console.error('❌ Erro no pool do PostgreSQL:', err);
@@ -53,4 +60,14 @@ export async function transaction(callback) {
         client.release();
     }
 }
+// Log de conexão para debug
+(async () => {
+    try {
+        const res = await pool.query('SELECT current_database() as db, current_user as user, current_schema as schema, current_setting(\'search_path\') as search_path');
+        console.log('🔎 Banco conectado:', res.rows[0]);
+    }
+    catch (e) {
+        console.error('Erro ao logar info do banco:', e);
+    }
+})();
 export default pool;

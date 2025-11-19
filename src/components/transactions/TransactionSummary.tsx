@@ -41,6 +41,9 @@ export function TransactionSummary({
   onNewTransaction,
   onRefresh
 }: TransactionSummaryProps) {
+  // 🔥 DEBUG
+  console.log('TransactionSummary:', { activeTab, transactionsCount: transactions.length });
+
   const summary = useMemo(() => {
     switch (activeTab) {
       case "all": {

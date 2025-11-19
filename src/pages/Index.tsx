@@ -57,7 +57,9 @@ const Index = () => {
     });
   }, [transactions, filters]);
 
+  // Alinhar com Relatórios/Transações: considerar apenas liquidadas
   const monthlyIncome = filteredTransactions
+    .filter(t => t.status === 'liquidado')
     .filter(t => t.tipo === 'credito')
     .reduce((sum, t) => {
       const value = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor;
@@ -65,6 +67,7 @@ const Index = () => {
     }, 0);
 
   const monthlyExpenses = filteredTransactions
+    .filter(t => t.status === 'liquidado')
     .filter(t => t.tipo === 'debito')
     .reduce((sum, t) => {
       const value = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor;

@@ -7,20 +7,20 @@ const __dirname = dirname(__filename);
 async function initDatabase() {
     console.log('🔨 Inicializando banco de dados...\n');
     try {
-        // Ler o script SQL
-        const sqlPath = join(__dirname, 'init-database.sql');
+        // Ler o script SQL completo do diretório database (inclui auth-schema)
+        const sqlPath = join(__dirname, '../database/init-complete.sql');
         const sql = readFileSync(sqlPath, 'utf-8');
         console.log('📄 Executando script SQL...');
         await pool.query(sql);
         console.log('✅ Banco de dados inicializado com sucesso!\n');
-        // Verificar tabelas criadas
+        // Verificar tabelas criadas no schema financeiro
         const result = await pool.query(`
       SELECT table_name 
       FROM information_schema.tables 
-      WHERE table_schema = 'public' 
+      WHERE table_schema = 'financeiro' 
       ORDER BY table_name
     `);
-        console.log(`📊 Tabelas criadas (${result.rows.length}):`);
+        console.log(`📊 Tabelas no schema financeiro (${result.rows.length}):`);
         result.rows.forEach(row => {
             console.log(`   ✓ ${row.table_name}`);
         });

@@ -52,7 +52,8 @@ const CustomTooltip = ({ active, payload, label, formatter }: any) => {
 };
 
 const Relatorios = () => {
-  const [selectedPeriod, setSelectedPeriod] = useState("current-year");
+  // Padrão: mês atual, para bater com Transações e Dashboard
+  const [selectedPeriod, setSelectedPeriod] = useState("current-month");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [filters, setFilters] = useState({
     from: new Date(new Date().getFullYear(), 0, 1).toISOString().split('T')[0],
@@ -71,6 +72,33 @@ const Relatorios = () => {
     [filters]
   );
 
+  // 🔥 DEBUG: Log quando transações mudarem
+  useEffect(() => {
+    if (transactions) {
+      const liquidadas = transactions.filter(t => t.status === 'liquidado');
+      const creditos = liquidadas.filter(t => t.tipo === 'credito');
+      const totalCreditos = creditos.reduce((sum, t) => {
+        const valor = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor;
+        return sum + Math.abs(valor || 0);
+      }, 0);
+
+      console.log('🔥 DEBUG RELATÓRIOS - Transações carregadas:', {
+        total: transactions.length,
+        liquidadas: liquidadas.length,
+        creditos: creditos.length,
+        totalCreditos: totalCreditos.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+        periodo: filters,
+        primeiros5Creditos: creditos.slice(0, 5).map(t => ({
+          id: t.id,
+          data: t.data_transacao,
+          valor: t.valor,
+          descricao: t.descricao,
+          categoria: t.categoria_pai_nome || t.categoria_nome
+        }))
+      });
+    }
+  }, [transactions, filters]);
+
   // Buscar recorrências ativas para calcular valores futuros
   const { data: recorrencias } = useFinanceiroRead(
     client,
@@ -79,16 +107,52 @@ const Relatorios = () => {
     []
   );
 
+  // Aplicar período selecionado aos filtros (mês/ano)
   useEffect(() => {
-    const from = new Date(selectedYear, 0, 1);
-    const to = new Date(selectedYear, 11, 31);
+    const now = new Date();
+    let from: Date;
+    let to: Date;
+
+    switch (selectedPeriod) {
+      case 'current-month':
+        from = new Date(now.getFullYear(), now.getMonth(), 1);
+        to = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        break;
+      case 'last-month':
+        from = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        to = new Date(now.getFullYear(), now.getMonth(), 0);
+        break;
+      case 'current-year':
+        from = new Date(selectedYear, 0, 1);
+        to = new Date(selectedYear, 11, 31);
+        break;
+      case 'last-year':
+        from = new Date(selectedYear - 1, 0, 1);
+        to = new Date(selectedYear - 1, 11, 31);
+        break;
+      default:
+        from = new Date(selectedYear, 0, 1);
+        to = new Date(selectedYear, 11, 31);
+    }
 
     setFilters({
       from: from.toISOString().split('T')[0],
       to: to.toISOString().split('T')[0]
-      // Sem filtro de status - buscar todos
+      // Sem filtro de status - buscar todos (filtramos por status nos cálculos específicos)
     });
-  }, [selectedYear]);
+
+    // Ajustar selectedYear quando mudar período anual
+    if (selectedPeriod === 'current-year') {
+      // mantém selectedYear
+    } else if (selectedPeriod === 'last-year') {
+      // espelha selectedYear para anterior caso o usuário troque manualmente para acompanhar
+      // (opcional; não altera UI se já estiver no ano desejado)
+    } else {
+      // Para períodos mensais, manter o label do demonstrativo no ano corrente
+      // ou baseado no 'from'
+      setSelectedYear(from.getFullYear());
+    }
+  }, [selectedPeriod, selectedYear]);
   
   // Processar dados mensais estilo planilha (apenas liquidado)
   const monthlyData = useMemo(() => {
@@ -97,27 +161,88 @@ const Relatorios = () => {
     const meses = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
     const categorias = new Map<string, { tipo: string, valores: number[] }>();
 
-    // Agrupar por categoria e mês (apenas liquidado)
-    transactions
-      .filter(t => t.status === 'liquidado')
-      .forEach(t => {
-        const mes = new Date(t.data_transacao).getMonth();
-        const categoria = t.categoria_pai_nome || t.subcategoria_nome || 'Sem categoria';
-        const valor = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor || 0;
+  // ⚠️ IMPORTANTE: Agrupar APENAS por categoria PRINCIPAL (pai)
+  // Se a transação tiver categoria_pai_nome, usa ela; senão usa categoria_nome
+  // Isso garante consistência com o DRE e evita discrepâncias
+  // Agrupar por categoria e mês (apenas liquidado)
+  
+  // 🔥 FILTRAR POR PERÍODO SELECIONADO
+  const filterFrom = new Date(filters.from);
+  const filterTo = new Date(filters.to);
+  
+  const transacoesLiquidadas = transactions.filter(t => {
+    if (t.status !== 'liquidado') return false;
+    const dataTransacao = new Date(t.data_transacao);
+    return dataTransacao >= filterFrom && dataTransacao <= filterTo;
+  });
 
-        if (!categorias.has(categoria)) {
-          categorias.set(categoria, { tipo: t.tipo, valores: Array(12).fill(0) });
-        }
+  // 🔥 DEBUG: Verificar se entrou alguma prevista
+  const previstasQuePassaram = transacoesLiquidadas.filter(t => t.status !== 'liquidado');
+  if (previstasQuePassaram.length > 0) {
+    console.error('❌ ERRO: Transações previstas passaram pelo filtro!', previstasQuePassaram);
+  }
+  
+  console.log('🔍 DEBUG Demonstrativo Mensal:', {
+    totalTransacoes: transactions?.length,
+    liquidadas: transacoesLiquidadas.length,
+    periodo: `${filters.from} até ${filters.to}`,
+    amostra: transacoesLiquidadas.slice(0, 3).map(t => ({
+      data: t.data_transacao,
+      tipo: t.tipo,
+      valor: t.valor,
+      categoria: t.categoria_pai_nome || t.categoria_nome
+    }))
+  });
 
-        const cat = categorias.get(categoria)!;
-        cat.valores[mes] += Math.abs(valor);
-      });
+  // 🔥 DEBUG: Verificar TODAS as transações de crédito em novembro
+  const creditosNovembro = transacoesLiquidadas.filter(t => {
+    const mes = new Date(t.data_transacao).getMonth();
+    return mes === 10 && t.tipo === 'credito'; // Novembro = índice 10
+  });
+
+  const totalCreditosNovembro = creditosNovembro.reduce((sum, t) => {
+    const valor = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor || 0;
+    return sum + Math.abs(valor);
+  }, 0);
+
+  console.log('🔥 DEBUG CRÉDITOS NOVEMBRO - TODAS AS TRANSAÇÕES:', {
+    quantidade: creditosNovembro.length,
+    total: totalCreditosNovembro.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }),
+    transacoes: creditosNovembro.map(t => ({
+      id: t.id,
+      data: t.data_transacao,
+      valor: t.valor,
+      descricao: t.descricao,
+      categoria: t.categoria_pai_nome || t.categoria_nome,
+      status: t.status
+    }))
+  });
+
+  transacoesLiquidadas
+    .forEach(t => {
+      const mes = new Date(t.data_transacao).getMonth();
+      // Usar categoria principal: se tiver pai, usa o pai; senão usa a própria categoria
+      const categoria = t.categoria_pai_nome || t.categoria_nome || 'Sem categoria';
+      const valor = typeof t.valor === 'string' ? parseFloat(t.valor) : t.valor || 0;
+      
+      // 🔥 CRIAR CHAVE ÚNICA: categoria + tipo para evitar misturar crédito/débito
+      const chave = `${categoria}__${t.tipo}`;
+      
+      if (!categorias.has(chave)) {
+        categorias.set(chave, { tipo: t.tipo, valores: Array(12).fill(0), nomeOriginal: categoria });
+      }
+
+      const cat = categorias.get(chave)!;
+      cat.valores[mes] += Math.abs(valor);
+    });
 
     // Separar receitas e despesas
     const receitas: any[] = [];
     const despesas: any[] = [];
 
-    categorias.forEach((dados, nome) => {
+    categorias.forEach((dados, chave) => {
+      // Recuperar nome original da categoria (sem o sufixo __tipo)
+      const nome = dados.nomeOriginal || chave.split('__')[0];
       const linha = { categoria: nome, valores: dados.valores };
       if (dados.tipo === 'credito') {
         receitas.push(linha);
@@ -139,6 +264,22 @@ const Relatorios = () => {
       return acc;
     }, []);
 
+    // 🔥 DEBUG: Verificar totais após agregação
+    console.log('🔍 DEBUG Demonstrativo Mensal - PÓS-AGREGAÇÃO:', {
+      totaisReceitas,
+      totalReceitasNov: totaisReceitas[10], // Novembro = índice 10
+      receitasCategoriasCount: receitas.length,
+      receitas: receitas.map(r => ({
+        categoria: r.categoria,
+        novembro: r.valores[10],
+        tipo: categorias.get(r.categoria)?.tipo
+      })),
+      // Somar manualmente para confirmar
+      somaManualNov: receitas.reduce((sum, r) => sum + (r.valores[10] || 0), 0),
+      // ⚠️ DIFERENÇA vs transações créditas diretas
+      diferencaVsCreditos: totaisReceitas[10] - totalCreditosNovembro
+    });
+
     return {
       meses,
       receitas,
@@ -148,31 +289,22 @@ const Relatorios = () => {
       resultadoMensal,
       resultadoAcumulado
     };
-  }, [transactions]);
+  }, [transactions, filters]);
 
-  // Calcular A Receber e A Pagar Acumulado (transações previstas + recorrências)
+  // Calcular A Receber e A Pagar Acumulado (transações previstas)
   const valoresFuturos = useMemo(() => {
     if (!transactions) return { aReceber: 0, aPagar: 0 };
-
-    const hoje = new Date();
-    hoje.setHours(0, 0, 0, 0);
 
     let aReceber = 0;
     let aPagar = 0;
     let countPrevistos = 0;
-    let countFuturos = 0;
-    let countRecorrencias = 0;
 
-    // Somar transações previstas futuras
+    // ⚠️ CORRIGIDO: Somar TODAS as transações previstas (não apenas futuras)
+    // Se estiver vendo o ano inteiro, deve mostrar todas as previstas do ano
     transactions.forEach(transaction => {
-      if (transaction.status === 'previsto') countPrevistos++;
-
       if (transaction.status !== 'previsto') return;
 
-      const dataTransacao = parseDate(transaction.data_transacao);
-      if (dataTransacao <= hoje) return; // Só valores futuros
-
-      countFuturos++;
+      countPrevistos++;
       const valor = typeof transaction.valor === 'string' ? parseFloat(transaction.valor) : transaction.valor;
       const valorAbs = Math.abs(valor || 0);
 
@@ -183,7 +315,11 @@ const Relatorios = () => {
       }
     });
 
-    // Somar recorrências ativas (próximas 3 ocorrências)
+    // Somar recorrências ativas (próximas 3 ocorrências) - apenas futuras
+    const hoje = new Date();
+    hoje.setHours(0, 0, 0, 0);
+    let countRecorrencias = 0;
+
     if (recorrencias && recorrencias.length > 0) {
       recorrencias.forEach(recorrencia => {
         if (recorrencia.is_paused || recorrencia.is_deleted) return;
@@ -209,7 +345,6 @@ const Relatorios = () => {
     console.log('🔍 DEBUG A Receber/Pagar:', {
       totalTransacoes: transactions?.length,
       previstos: countPrevistos,
-      futuros: countFuturos,
       recorrenciasAtivas: countRecorrencias,
       hoje: hoje.toISOString().split('T')[0],
       aReceber,
@@ -233,20 +368,30 @@ const Relatorios = () => {
     const despesas = new Map<string, number>();
     const categorias = new Set<string>();
 
-    // Filtrar apenas transações liquidadas para o DRE
+    // ⚠️ IMPORTANTE: Usar MESMA lógica de agrupamento do Demonstrativo Mensal
+    // Categoria principal (pai) para garantir consistência entre relatórios
+    // Filtrar apenas transações liquidadas para o DRE + respeitar período
+    const filterFrom = new Date(filters.from);
+    const filterTo = new Date(filters.to);
+    
     transactions
-      .filter(t => t.status === 'liquidado')
+      .filter(t => {
+        if (t.status !== 'liquidado') return false;
+        const dataTransacao = new Date(t.data_transacao);
+        return dataTransacao >= filterFrom && dataTransacao <= filterTo;
+      })
       .forEach(transaction => {
-        const subcategoria = transaction.subcategoria_nome || transaction.categoria_nome || "Sem categoria";
+        // Usar categoria principal: se tiver pai, usa o pai; senão usa a própria categoria
+        const categoria = transaction.categoria_pai_nome || transaction.categoria_nome || "Sem categoria";
         const valor = typeof transaction.valor === 'string' ? parseFloat(transaction.valor) : transaction.valor;
         const valorAbs = Math.abs(valor || 0);
         
-        categorias.add(subcategoria);
+        categorias.add(categoria);
 
         if (transaction.tipo === "credito") {
-          receitas.set(subcategoria, (receitas.get(subcategoria) || 0) + valorAbs);
+          receitas.set(categoria, (receitas.get(categoria) || 0) + valorAbs);
         } else if (transaction.tipo === "debito") {
-          despesas.set(subcategoria, (despesas.get(subcategoria) || 0) + valorAbs);
+          despesas.set(categoria, (despesas.get(categoria) || 0) + valorAbs);
         }
       });
 
@@ -268,7 +413,7 @@ const Relatorios = () => {
       totalDespesas: despesasArray.reduce((sum, item) => sum + item.valor, 0),
       dreTable
     };
-  }, [transactions]);
+  }, [transactions, filters]);
 
   // Process cash flow data
   const fluxoData = useMemo(() => {
@@ -298,7 +443,7 @@ const Relatorios = () => {
       mes,
       ...data
     }));
-  }, [transactions]);
+  }, [transactions, filters]);
 
   // Process accounts payable
   const contasPagarData = useMemo(() => {
@@ -332,7 +477,7 @@ const Relatorios = () => {
       });
 
     return grupos.filter(g => g.quantidade > 0);
-  }, [transactions]);
+  }, [transactions, filters]);
 
   // Process card spending
   const gastosCartaoData = useMemo(() => {
@@ -360,7 +505,7 @@ const Relatorios = () => {
       }))
       .sort((a, b) => b.valor - a.valor)
       .slice(0, 5);
-  }, [transactions]);
+  }, [transactions, filters]);
 
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('pt-BR', {

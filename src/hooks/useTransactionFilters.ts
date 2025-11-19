@@ -25,6 +25,7 @@ interface Transaction {
 export function useTransactionFilters(transactions: Transaction[]) {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterType, setFilterType] = useState<string>("all");
+  // ⚠️ REMOVIDO: Filtro de status padrão (o backend já faz isso por aba)
   const [filterStatus, setFilterStatus] = useState<string>("all");
   
   // ✅ Default: Este mês
@@ -43,12 +44,15 @@ export function useTransactionFilters(transactions: Transaction[]) {
       // Type filter
       const matchesType = filterType === "all" || transaction.type === filterType;
       
+      // Status filter (aplicado somente se diferente de "all")
+      const matchesStatus = filterStatus === "all" || transaction.status === filterStatus;
+
       // Date range filter
       const transDate = parseDate(transaction.date);
       const matchesDate = !dateRange || 
         (transDate >= dateRange.from && transDate <= dateRange.to);
       
-      return matchesSearch && matchesType && matchesDate;
+      return matchesSearch && matchesType && matchesStatus && matchesDate;
     });
   }, [transactions, searchTerm, filterType, dateRange]);
 

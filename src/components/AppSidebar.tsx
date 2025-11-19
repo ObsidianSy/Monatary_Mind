@@ -48,6 +48,7 @@ const mainMenuItems = [
 const advancedMenuItems = [
   { title: "Relatórios", url: "/relatorios", icon: FileText },
   { title: "Projeção", url: "/projecao", icon: TrendingUp },
+  { title: "Projeção Mensal", url: "/projecao-mensal", icon: TrendingUp },
   { title: "Alertas", url: "/alertas", icon: Bell },
 ];
 

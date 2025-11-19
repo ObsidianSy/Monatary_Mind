@@ -3068,6 +3068,260 @@ app.get('/api/projecao', authenticateToken(pool), async (req: AuthRequest, res: 
   }
 });
 
+// GET /api/projecao-mensal?months=6
+// Retorna projeção futura agrupada por CATEGORIA (igual ao Demonstrativo Mensal de Relatórios)
+app.get('/api/projecao-mensal', authenticateToken(pool), async (req: AuthRequest, res: Response) => {
+  try {
+    const tenantId = req.user?.tenantId;
+    if (!tenantId) return res.status(400).json({ error: 'Selecione um workspace primeiro' });
+
+    const months = parseInt(String(req.query.months || '6'), 10);
+
+    // Date helpers
+    const today = new Date();
+    const startMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+    const endMonth = new Date(today.getFullYear(), today.getMonth() + months, 1);
+
+    // Buscar categorias PRINCIPAIS (sem parent_id) + criar mapa de subcategorias -> pai
+    const categoriasRes = await query(
+      `SELECT id, nome, tipo, parent_id FROM financeiro.categoria WHERE tenant_id = $1 AND is_deleted = false ORDER BY tipo DESC, nome ASC`,
+      [tenantId]
+    );
+    const categorias = categoriasRes.rows;
+
+    // Mapa: subcategoria_id -> categoria_pai_id
+    const subcategoriaParentMap: Record<string, string> = {};
+    categorias.forEach((cat: any) => {
+      if (cat.parent_id) {
+        subcategoriaParentMap[cat.id] = cat.parent_id;
+      }
+    });
+
+    // Inicializar estrutura apenas para CATEGORIAS PRINCIPAIS (sem parent_id)
+    const categoriaMap: Record<string, { nome: string; tipo: string; valores: number[] }> = {};
+    categorias.forEach((cat: any) => {
+      if (!cat.parent_id) {
+        categoriaMap[cat.id] = { nome: cat.nome, tipo: cat.tipo, valores: Array(months).fill(0) };
+      }
+    });
+
+    // Categoria "Sem Categoria"
+    categoriaMap['sem_categoria_receita'] = { nome: 'Sem Categoria', tipo: 'receita', valores: Array(months).fill(0) };
+    categoriaMap['sem_categoria_despesa'] = { nome: 'Sem Categoria', tipo: 'despesa', valores: Array(months).fill(0) };
+
+    // Helper: resolver categoria principal (se for subcategoria, retorna o pai)
+    const resolverCategoriaPrincipal = (catId: string | null, tipo: 'credito' | 'debito'): string => {
+      if (!catId) return tipo === 'credito' ? 'sem_categoria_receita' : 'sem_categoria_despesa';
+      // Se for subcategoria, pegar o pai
+      const parentId = subcategoriaParentMap[catId];
+      return parentId || catId;
+    };
+
+    // 1️⃣ Buscar RECORRÊNCIAS ativas
+    const recorrenciasRes = await query(
+      `SELECT r.*, c.nome as categoria_nome, c.tipo as categoria_tipo 
+       FROM financeiro.recorrencia r 
+       LEFT JOIN financeiro.categoria c ON r.categoria_id = c.id 
+       WHERE r.tenant_id = $1 AND r.is_deleted = false AND r.is_paused = false`,
+      [tenantId]
+    );
+
+    // Helper: gerar ocorrências de recorrência por mês
+    function occurrencesForRecurrence(rec: any, year: number, month: number): Date[] {
+      const occurrences: Date[] = [];
+      const firstDay = new Date(year, month - 1, 1);
+      const lastDay = new Date(year, month, 0);
+      switch (rec.frequencia) {
+        case 'mensal':
+          if (rec.dia_vencimento) {
+            const dia = Math.min(rec.dia_vencimento, lastDay.getDate());
+            occurrences.push(new Date(year, month - 1, dia));
+          }
+          break;
+        case 'semanal':
+          if (rec.dia_semana !== undefined && rec.dia_semana !== null) {
+            let cur = new Date(firstDay);
+            while (cur <= lastDay) {
+              if (cur.getDay() === rec.dia_semana) occurrences.push(new Date(cur));
+              cur.setDate(cur.getDate() + 1);
+            }
+          }
+          break;
+        case 'anual':
+          const dataInicio = new Date(rec.data_inicio);
+          if ((dataInicio.getMonth() + 1) === month) {
+            const dia = Math.min(dataInicio.getDate(), lastDay.getDate());
+            occurrences.push(new Date(year, month - 1, dia));
+          }
+          break;
+      }
+      return occurrences;
+    }
+
+    // 2️⃣ Buscar TRANSAÇÕES PENDENTES (status = 'previsto')
+    const transPrevistosRes = await query(
+      `SELECT t.*, c.nome as categoria_nome, c.tipo as categoria_tipo 
+       FROM financeiro.transacao t 
+       LEFT JOIN financeiro.categoria c ON t.categoria_id = c.id 
+       WHERE t.tenant_id = $1 AND t.status = 'previsto' AND t.data_transacao >= $2 AND t.data_transacao < $3`,
+      [tenantId, startMonth.toISOString().split('T')[0], endMonth.toISOString().split('T')[0]]
+    );
+
+    // 3️⃣ Buscar FATURAS FUTURAS (fechadas ou abertas)
+    const faturasRes = await query(
+      `SELECT f.*, ca.apelido as cartao_apelido 
+       FROM financeiro.fatura f 
+       JOIN financeiro.cartao ca ON ca.id = f.cartao_id 
+       WHERE f.tenant_id = $1 AND f.data_vencimento >= $2 AND f.data_vencimento < $3`,
+      [tenantId, startMonth.toISOString().split('T')[0], endMonth.toISOString().split('T')[0]]
+    );
+
+    // Helper: pegar categoria_id de fatura (buscar itens da fatura e agregar por categoria predominante)
+    async function getCategoriaDaFatura(faturaId: string): Promise<string | null> {
+      const itensRes = await query(
+        `SELECT fi.categoria_id, SUM(fi.valor) as total 
+         FROM financeiro.fatura_item fi 
+         WHERE fi.fatura_id = $1 
+         GROUP BY fi.categoria_id 
+         ORDER BY total DESC 
+         LIMIT 1`,
+        [faturaId]
+      );
+      return itensRes.rows[0]?.categoria_id || null;
+    }
+
+    // Montar lista de meses
+    const mesesPtBr = ['JAN', 'FEV', 'MAR', 'ABR', 'MAI', 'JUN', 'JUL', 'AGO', 'SET', 'OUT', 'NOV', 'DEZ'];
+    const monthsList: { year: number; month: number; label: string }[] = [];
+    for (let i = 0; i < months; i++) {
+      const d = new Date(startMonth.getFullYear(), startMonth.getMonth() + i, 1);
+      const mesIdx = d.getMonth();
+      monthsList.push({ year: d.getFullYear(), month: d.getMonth() + 1, label: mesesPtBr[mesIdx] });
+    }
+
+    // 🔥 Processar RECORRÊNCIAS
+    for (const rec of recorrenciasRes.rows) {
+      for (let i = 0; i < monthsList.length; i++) {
+        const m = monthsList[i];
+        const occs = occurrencesForRecurrence(rec, m.year, m.month);
+        if (occs.length > 0) {
+          const valor = parseFloat(String(rec.valor || 0));
+          const catIdPrincipal = resolverCategoriaPrincipal(rec.categoria_id, rec.tipo);
+          if (categoriaMap[catIdPrincipal]) {
+            categoriaMap[catIdPrincipal].valores[i] += valor;
+          }
+        }
+      }
+    }
+
+    // 🔥 Processar TRANSAÇÕES PENDENTES
+    for (const t of transPrevistosRes.rows) {
+      const date = new Date(t.data_transacao);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const idx = monthsList.findIndex(m => m.year === year && m.month === month);
+      if (idx >= 0) {
+        const valor = parseFloat(String(t.valor || 0));
+        const catIdPrincipal = resolverCategoriaPrincipal(t.categoria_id, t.tipo);
+        if (categoriaMap[catIdPrincipal]) {
+          categoriaMap[catIdPrincipal].valores[idx] += valor;
+        }
+      }
+    }
+
+    // 🔥 Processar FATURAS FUTURAS
+    for (const f of faturasRes.rows) {
+      const date = new Date(f.data_vencimento);
+      const year = date.getFullYear();
+      const month = date.getMonth() + 1;
+      const idx = monthsList.findIndex(m => m.year === year && m.month === month);
+      if (idx >= 0) {
+        const valor = parseFloat(String(f.valor_fechado || 0));
+        // Tentar pegar categoria predominante da fatura
+        const catIdOriginal = await getCategoriaDaFatura(f.id) || null;
+        const catIdPrincipal = resolverCategoriaPrincipal(catIdOriginal, 'debito');
+        if (categoriaMap[catIdPrincipal]) {
+          categoriaMap[catIdPrincipal].valores[idx] += valor;
+        }
+      }
+    }
+
+    // Separar receitas e despesas
+    const receitas = Object.entries(categoriaMap)
+      .filter(([_, v]) => v.tipo === 'receita')
+      .map(([catId, v]) => ({ categoria: v.nome, valores: v.valores }));
+
+    const despesas = Object.entries(categoriaMap)
+      .filter(([_, v]) => v.tipo === 'despesa')
+      .map(([catId, v]) => ({ categoria: v.nome, valores: v.valores }));
+
+    // Calcular totais por mês
+    const totaisReceitas = Array(months).fill(0).map((_, i) => receitas.reduce((acc, r) => acc + r.valores[i], 0));
+    const totaisDespesas = Array(months).fill(0).map((_, i) => despesas.reduce((acc, d) => acc + d.valores[i], 0));
+    const resultadoMensal = totaisReceitas.map((r, i) => r - totaisDespesas[i]);
+
+    // Calcular resultado acumulado
+    const resultadoAcumulado = resultadoMensal.reduce((acc: number[], val: number, i: number) => {
+      acc.push((i === 0 ? 0 : acc[i - 1]) + val);
+      return acc;
+    }, [] as number[]);
+
+    // 🔥 PROJEÇÃO DE SALDO POR CONTA BANCÁRIA
+    const contasRes = await query(
+      `SELECT id, nome, tipo, saldo_inicial FROM financeiro.conta WHERE tenant_id = $1 AND is_deleted = false AND tipo IN ('banco', 'carteira') ORDER BY nome ASC`,
+      [tenantId]
+    );
+    const contas = contasRes.rows;
+
+    // Buscar saldo atual de cada conta (usando view ou fallback)
+    let saldoAtualMap: Record<string, number> = {};
+    try {
+      const saldoRes = await query(
+        `SELECT v.conta_id, v.saldo_atual FROM financeiro.vw_saldo_por_conta v WHERE EXISTS (SELECT 1 FROM financeiro.conta c WHERE c.id = v.conta_id AND c.tenant_id = $1 AND c.is_deleted = false)`,
+        [tenantId]
+      );
+      saldoRes.rows.forEach((r: any) => { saldoAtualMap[r.conta_id] = parseFloat(String(r.saldo_atual || 0)); });
+    } catch {
+      // Fallback: usar saldo_inicial
+      contas.forEach((c: any) => { saldoAtualMap[c.id] = parseFloat(String(c.saldo_inicial || 0)); });
+    }
+
+    // Projetar saldo de cada conta mês a mês
+    const contasProjecao = contas.map((conta: any) => {
+      const saldoInicial = saldoAtualMap[conta.id] || parseFloat(String(conta.saldo_inicial || 0));
+      const projecao: number[] = [];
+      let saldoAtual = saldoInicial;
+
+      for (let i = 0; i < months; i++) {
+        // Somar entradas e subtrair saídas (simplificado: usar totais gerais proporcionalmente)
+        // Idealmente, buscaríamos transações específicas por conta, mas aqui vamos simplificar
+        saldoAtual = saldoAtual + resultadoMensal[i];
+        projecao.push(saldoAtual);
+      }
+
+      return {
+        nome: conta.nome,
+        saldoInicial,
+        projecao,
+      };
+    });
+
+    res.json({
+      meses: monthsList.map(m => m.label),
+      receitas,
+      despesas,
+      totaisReceitas,
+      totaisDespesas,
+      resultadoMensal,
+      resultadoAcumulado,
+      contas: contasProjecao,
+    });
+  } catch (error: any) {
+    console.error('Erro ao calcular projeção mensal:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // 🔥 DEBUG: Endpoint para verificar TODAS as parcelas TESS no banco
 app.get("/api/debug/parcelas", async (req, res) => {
   try {
